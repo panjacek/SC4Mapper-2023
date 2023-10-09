@@ -2,6 +2,7 @@
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
+# define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <malloc.h>
 #include <memory.h>
@@ -287,8 +288,17 @@ static PyMethodDef QFSMethods[] =
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
-
-PyMODINIT_FUNC initQFS(void)
+static struct PyModuleDef QFSDef =
 {
-    (void) Py_InitModule("QFS", QFSMethods);
-}
+    PyModuleDef_HEAD_INIT,
+    "QFS",
+    "",
+    -1,
+    QFSMethods,
+};
+
+
+PyMODINIT_FUNC PyInit_QFS(void)
+{
+    return PyModule_Create(&QFSDef);
+} 

@@ -26,7 +26,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
-#include <python.h>
+# define PY_SSIZE_T_CLEAN
+#include <Python.h>
 #include <malloc.h>
 #include <memory.h>
 #include <math.h>
@@ -84,15 +85,15 @@ struct Gradient
     	if( PyDict_Check( p ) )
     	{
     		PyObject *key, *value;
-    		int pos = 0;
+    		long pos = 0;
     
     		while (PyDict_Next(p, &pos, &key, &value)) 
     		{
     			int k;
     			int r,g,b;
-    			if( PyInt_Check( key ) )
+    			if( PyLong_Check( key ) )
     			{
-    				k = PyInt_AsLong( key );
+    				k = PyLong_AsLong( key );
     				//printf("key ok %d\n",k );
     			}
     			else
@@ -101,9 +102,9 @@ struct Gradient
     			}
     			if( PyTuple_Check( value ) )
     			{
-    			    r = PyInt_AsLong( PyTuple_GetItem( value,0 ) );
-    			    g = PyInt_AsLong( PyTuple_GetItem( value,1 ) );
-    			    b = PyInt_AsLong( PyTuple_GetItem( value,2 ) );
+    			    r = PyLong_AsLong( PyTuple_GetItem( value,0 ) );
+    			    g = PyLong_AsLong( PyTuple_GetItem( value,1 ) );
+    			    b = PyLong_AsLong( PyTuple_GetItem( value,2 ) );
     			    //printf("value ok %d\n",r,g,b );
     			    colors_.insert( std::make_pair( k, RGBColor( r,g,b) ) );
     			}
@@ -150,7 +151,7 @@ unsigned char* OnePassColors( bool bLight, int xSize, int ySize, float waterLeve
 	colors = (unsigned char*)malloc( xSize*ySize*3 );
 	memset( colors, 0xFF, xSize*ySize*3 );
 	float vertex[3];
-	float h,l,v;
+	float l,v;
 	float* pCurrHeight = height;
 	unsigned char* pCurrColor = colors;
 	for( y = 0; y < ySize; ++y )
@@ -356,64 +357,78 @@ unsigned char* GenerateImage( float waterLevel,int xSize, int ySize, float* heig
 extern "C"
 {
 
-static PyObject *Py_OnePassColors( PyObject *self, PyObject *args )
-{
-	char* bufferH;
-	int lenH;
-	float waterLevel;
-	float lightDir[3];
-	unsigned char* out;
-	PyObject *pRet ;
-	PyObject *pWGrad ;
-	PyObject *pLGrad ;
-	int bLight;
-	int xSize, ySize;
-	if (!PyArg_ParseTuple(args, "i(ii)fs#OO(fff)", &bLight,&ySize,&xSize, &waterLevel, &bufferH, &lenH, &pWGrad,&pLGrad,&lightDir[0], &lightDir[1],&lightDir[2] ) )
-        return NULL;
-	Py_BEGIN_ALLOW_THREADS
-	out = ( unsigned char*)OnePassColors( bLight, xSize, ySize, waterLevel, (float*)bufferH, Gradient( pWGrad ), Gradient( pLGrad ), lightDir );
-	Py_END_ALLOW_THREADS
-	pRet = Py_BuildValue( "s#", out, xSize*ySize*3 ); 
-	free( out );
-    return pRet;
-}
+    static PyObject *Py_OnePassColors( PyObject *self, PyObject *args )
+    {
+        char* bufferH;
+        int lenH;
+        float waterLevel;
+        float lightDir[3];
+        unsigned char* out;
+        PyObject *pRet ;
+        PyObject *pWGrad ;
+        PyObject *pLGrad ;
+        int bLight;
+        int xSize, ySize;
+        if (!PyArg_ParseTuple(args, "i(ii)fs#OO(fff)", &bLight,&ySize,&xSize, &waterLevel, &bufferH, &lenH, &pWGrad,&pLGrad,&lightDir[0], &lightDir[1],&lightDir[2] ) )
+            return NULL;
+        Py_BEGIN_ALLOW_THREADS
+        out = ( unsigned char*)OnePassColors( bLight, xSize, ySize, waterLevel, (float*)bufferH, Gradient( pWGrad ), Gradient( pLGrad ), lightDir );
+        Py_END_ALLOW_THREADS
+        pRet = Py_BuildValue( "s#", out, xSize*ySize*3 ); 
+        free( out );
+        return pRet;
+    }
 
-static PyObject* Py_GenerateImage( PyObject *self, PyObject *args )
-{
-	int xSize,ySize,lenH,lenC;
-	char* bufH;
-	char* bufC;
-	unsigned char* out;
-	float waterLevel;
-	int xmin,ymin,xmax,ymax;
-	PyObject* pRet;
-	if (!PyArg_ParseTuple(args, "f(ii)s#s#", &waterLevel,&ySize,&xSize,&bufH,&lenH,&bufC,&lenC))
-        return NULL;
-	out = GenerateImage( waterLevel,xSize, ySize,(float*)bufH,(unsigned char*)bufC,&xmin,&ymin,&xmax,&ymax );
-	pRet = Py_BuildValue( "iiiis#", xmin,ymin,xmax,ymax,out,514*428*6 ); 
-	free( out );	
-    return pRet;
-}
+    static PyObject* Py_GenerateImage( PyObject *self, PyObject *args )
+    {
+        int xSize,ySize,lenH,lenC;
+        char* bufH;
+        char* bufC;
+        unsigned char* out;
+        float waterLevel;
+        int xmin,ymin,xmax,ymax;
+        PyObject* pRet;
+        if (!PyArg_ParseTuple(args, "f(ii)s#s#", &waterLevel,&ySize,&xSize,&bufH,&lenH,&bufC,&lenC))
+            return NULL;
+        out = GenerateImage( waterLevel,xSize, ySize,(float*)bufH,(unsigned char*)bufC,&xmin,&ymin,&xmax,&ymax );
+        pRet = Py_BuildValue( "iiiis#", xmin,ymin,xmax,ymax,out,514*428*6 ); 
+        free( out );	
+        return pRet;
+    }
 
-static PyObject* PyT_GetVersion( PyObject *self, PyObject *args )
-{
-	PyObject* pRet;
-	pRet = Py_BuildValue( "s", "v1.0d" );
-	return pRet;
-}
+    static PyObject* PyT_GetVersion( PyObject *self, PyObject *args )
+    {
+        PyObject* pRet;
+        pRet = Py_BuildValue( "s", "v1.0d" );
+        return pRet;
+    }
 
-static PyMethodDef tools3DMethods[] =
-{
-	{"onePassColors", Py_OnePassColors, METH_VARARGS, "generate color map" },
-	{"generateImage", Py_GenerateImage, METH_VARARGS, "generate thumbs" },
-	{"GetVersion", PyT_GetVersion,METH_VARARGS,"get dll version" },
-    {NULL, NULL, 0, NULL}        /* Sentinel */
-};
+    static PyMethodDef tools3DMethods[] =
+    {
+        {"onePassColors", Py_OnePassColors, METH_VARARGS, "generate color map" },
+        {"generateImage", Py_GenerateImage, METH_VARARGS, "generate thumbs" },
+        {"GetVersion", PyT_GetVersion,METH_VARARGS,"get dll version" },
+        {NULL, NULL, 0, NULL}        /* Sentinel */
+    };
 
+    static struct PyModuleDef ctools3DDef =
+    {
+        PyModuleDef_HEAD_INIT,
+        "tools3D",
+        "",
+        -1,
+        tools3DMethods
+    };
 
-_declspec( dllexport ) void  inittools3D(void)
+    PyMODINIT_FUNC 
+    PyInit_tools3D(void)
+    {
+        return PyModule_Create(&ctools3DDef);
+    }
+
+/*_declspec( dllexport ) void  inittools3D(void)
 {
     (void) Py_InitModule("tools3D", tools3DMethods);
 }
-
+*/
 }
