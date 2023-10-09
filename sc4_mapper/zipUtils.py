@@ -1,18 +1,18 @@
 # File: zlib-example-4.py
 
-import zlib
 import string
+import zlib
+
 
 class ZipInputStream:
-
     def __init__(self, file):
         self.file = file
         self.__rewind()
 
     def __rewind(self):
         self.zip = zlib.decompressobj()
-        self.pos = 0 # position in zipped stream
-        self.offset = 0 # position in unzipped stream
+        self.pos = 0  # position in zipped stream
+        self.offset = 0  # position in unzipped stream
         self.data = ""
 
     def __fill(self, bytes):
@@ -20,12 +20,12 @@ class ZipInputStream:
             # read until we have enough bytes in the buffer
             while not bytes or len(self.data) < bytes:
                 self.file.seek(self.pos)
-                data = self.file.read(1024*1024)
+                data = self.file.read(1024 * 1024)
                 if not data:
                     self.data = self.data + self.zip.flush()
-                    self.zip = None # no more data
+                    self.zip = None  # no more data
                     break
-                print 'zip read'
+                print("zip read")
                 self.pos = self.pos + len(data)
                 self.data = self.data + self.zip.decompress(data)
 
@@ -35,9 +35,9 @@ class ZipInputStream:
         elif whence == 1:
             position = self.offset + offset
         else:
-            raise IOError, "Illegal argument"
+            raise IOError("Illegal argument")
         if position < self.offset:
-            raise IOError, "Cannot seek backwards"
+            raise IOError("Cannot seek backwards")
 
         # skip forward, in 16k blocks
         while position > self.offset:
@@ -47,7 +47,7 @@ class ZipInputStream:
     def tell(self):
         return self.offset
 
-    def read(self, bytes = 0):
+    def read(self, bytes=0):
         self.__fill(bytes)
         if bytes:
             data = self.data[:bytes]
@@ -76,12 +76,15 @@ class ZipInputStream:
             lines.append(s)
         return lines
 
+
 #
 # try it out
 if 0:
-	data = open("samples/sample.txt").read()
-	data = zlib.compress(data)
+    import StringIO
 
-	file = ZipInputStream(StringIO.StringIO(data))
-	for line in file.readlines():
-		print line[:-1]
+    data = open("samples/sample.txt").read()
+    data = zlib.compress(data)
+
+    file = ZipInputStream(StringIO.StringIO(data))
+    for line in file.readlines():
+        print(line[:-1])

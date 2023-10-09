@@ -1,4 +1,5 @@
 # Build and Distrib Folders
+__pycache__
 build/
 dist/
 *.pyo
