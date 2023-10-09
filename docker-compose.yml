@@ -1,0 +1,18 @@
+services:
+  sc4_mapper:
+    build: .
+    image: sc4mapper:latest
+    container_name: sc4mapper
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/tmp/.Xauthority
+      - GIO_USE_VFS=local
+      - NO_AT_BRIDGE=1
+      - GSETTINGS_BACKEND=memory
+      - DBUS_SESSION_BUS_ADDRESS=/dev/null
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro
+      - .:/app
+    network_mode: host
+    command: python3 -m sc4_mapper.SC4MapApp
