@@ -11,6 +11,9 @@ import wx
 import wx.adv
 from PIL import Image, ImageDraw
 
+# FIXME: if i remove this... all opens go bad.
+with Image.open("/app/region_tests/Breslau/config.bmp") as im:
+    print(im)
 from sc4_mapper import (
     EDITMODE_BIG,
     EDITMODE_MEDIUM,
@@ -20,11 +23,10 @@ from sc4_mapper import (
     MAPPER_VERSION,
     SCROLL_RATE,
     QuestionDialog,
-    about,
+    base_dir,
     rgnReader,
-    zipUtils,
 )
-from sc4_mapper.region_from_file import CreateRgnFromFile
+from sc4_mapper.region_from_file import CreateRgnFromFile, SC4MfileHandler
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,15 @@ def cached_listdir(path):
     return res
 
 
+# FIXME: ugly?
+class DlgStub:
+    def __init__(self):
+        pass
+
+    def Update(self, x, y):
+        pass
+
+
 class OverView(wx.Frame):
     def __init__(
         self,
@@ -54,7 +65,7 @@ class OverView(wx.Frame):
         # super().__init__(parent, -1, title, pos, size, style)
         super().__init__(parent, -1, title, pos, size, style)
         self.region = None
-        self.SetSizeHintsSz(wx.Size(700, 400), wx.DefaultSize)
+        self.SetSizeHints(wx.Size(700, 400), wx.DefaultSize)
         self.SetBackgroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW))
         self.Bind(wx.EVT_CLOSE, self.OnCloseWindow)
         self.editMode = EDITMODE_NONE
@@ -184,7 +195,7 @@ class OverView(wx.Frame):
         sys.exit(0)
 
     def RevertConfig(self, event):
-        self.region.allCities = rgnReader.WorkTheconfig(self.region.originalConfig, 250.0)
+        self.region.allCities = rgnReader.parse_config(self.region.originalConfig, 250.0)
         self.region.config = self.region.BuildConfig()
         self.editMode = EDITMODE_NONE
         self.btnSmall.SetValue(False)
@@ -357,7 +368,7 @@ class OverView(wx.Frame):
                             newpos[0],
                             newpos[1],
                         ]
-                        logger.info("Crop", self.back.crop)
+                        logger.info(f"Crop {self.back.crop}")
                         self.back.UpdateDrawing()
                         self.back.wait = True
                         self.back.Refresh(False)
@@ -403,10 +414,10 @@ class OverView(wx.Frame):
     def OnLeftDown(self, event):
         if self.btnEditMode.GetValue() and self.editMode == EDITMODE_NONE and event.controlDown:
             # FIXME: redundant??
-            newSize = (
+            """newSize = (
                 int(self.region.imgSize[0] / self.zoomLevel),
                 int(self.region.imgSize[1] / self.zoomLevel),
-            )
+            )"""
             newpos = self.back.CalcUnscrolledPosition(event.GetX(), event.GetY())
             newpos = [newpos[0] * self.zoomLevel, newpos[1] * self.zoomLevel]
             newpos = [newpos[0] - self.back.offX, newpos[1] - self.back.offY]
@@ -424,10 +435,10 @@ class OverView(wx.Frame):
     def OnLeftUp(self, event):
         if self.btnEditMode.GetValue():
             # FIXME: redundant??
-            newSize = (
+            """newSize = (
                 int(self.region.imgSize[0] / self.zoomLevel),
                 int(self.region.imgSize[1] / self.zoomLevel),
-            )
+            )"""
             newpos = self.back.CalcUnscrolledPosition(event.GetX(), event.GetY())
             newpos = [newpos[0] * self.zoomLevel, newpos[1] * self.zoomLevel]
             newpos = [newpos[0] - self.back.offX, newpos[1] - self.back.offY]
@@ -448,7 +459,7 @@ class OverView(wx.Frame):
                         (0, 0, self.region.config.size[0], self.region.config.size[1]),
                     )
                     self.region.config.paste(config, (crop[0], crop[1]))
-                    self.region.allCities = rgnReader.WorkTheconfig(self.region.config, self.region.waterLevel)
+                    self.region.allCities = rgnReader.parse_config(self.region.config, self.region.waterLevel)
                     self.region.config = self.region.BuildConfig()
                 self.back.crop = None
             elif self.editMode == EDITMODE_VOID:
@@ -547,8 +558,8 @@ class OverView(wx.Frame):
                     (height, width),
                     self.region.waterLevel,
                     h,
-                    rgnReader.GradientReader.paletteWater,
-                    rgnReader.GradientReader.paletteLand,
+                    rgnReader.GRADIENT_READER.paletteWater,
+                    rgnReader.GRADIENT_READER.paletteLand,
                     lightDir,
                 )
                 del h
@@ -575,8 +586,8 @@ class OverView(wx.Frame):
                         (height, width),
                         self.region.waterLevel,
                         h,
-                        rgnReader.GradientReader.paletteWater,
-                        rgnReader.GradientReader.paletteLand,
+                        rgnReader.GRADIENT_READER.paletteWater,
+                        rgnReader.GRADIENT_READER.paletteLand,
                         lightDir,
                     )
                     del h
@@ -606,8 +617,8 @@ class OverView(wx.Frame):
                         (height, width),
                         self.region.waterLevel,
                         h,
-                        rgnReader.GradientReader.paletteWater,
-                        rgnReader.GradientReader.paletteLand,
+                        rgnReader.GRADIENT_READER.paletteWater,
+                        rgnReader.GRADIENT_READER.paletteLand,
                         lightDir,
                     )
                     del h
@@ -730,8 +741,8 @@ class OverView(wx.Frame):
                         (height, width),
                         self.region.waterLevel,
                         h,
-                        rgnReader.GradientReader.paletteWater,
-                        rgnReader.GradientReader.paletteLand,
+                        rgnReader.GRADIENT_READER.paletteWater,
+                        rgnReader.GRADIENT_READER.paletteLand,
                         lightDir,
                     )
                     imCity = Image.fromstring("RGB", (width, height), rawRGB).convert("L").convert("RGB")
@@ -797,10 +808,10 @@ class OverView(wx.Frame):
         dlg = wx.FileDialog(
             self,
             message="Choose a SC4M file",
-            defaultDir=os.getcwd(),
+            defaultDir=base_dir,
             defaultFile="",
             wildcard="SC4Terraform exported (*.SC4M)|*.SC4M",
-            style=wx.OPEN,
+            style=wx.FD_OPEN,
         )
         if dlg.ShowModal() == wx.ID_OK:
             paths = dlg.GetPaths()[0]
@@ -815,69 +826,14 @@ class OverView(wx.Frame):
         wx.BeginBusyCursor()
 
         try:
-            raw = open(sc4mFile, "rb")
-            zipped = zipUtils.ZipInputStream(raw)
-            s = zipped.read(4)
-            if s != "SC4M":
-                raise IOError("SC4M")
-            version = struct.unpack("L", zipped.read(4))[0]
-            if version != 0x0200:
-                raise IOError("Version")
-            ySize = struct.unpack("L", zipped.read(4))[0]
-            xSize = struct.unpack("L", zipped.read(4))[0]
-            # FIXME: looks like redundant
-            mini = struct.unpack("f", zipped.read(4))[0]
+            sc4m_file_obj = SC4MfileHandler(sc4mFile)
+            r, config = sc4m_file_obj.read()
 
-            temp = zipped.read(4)
-            logger.info(temp)
-            if temp == "SC4N":
-                lenHtml = struct.unpack("L", zipped.read(4))[0]
-                if lenHtml:
-                    htmlText = zipped.read(lenHtml)
-                    os.chdir(os.path.split(sc4mFile)[0])
-                    try:
-                        authorNotes = about.AuthorBox(self, htmlText)
-                        wx.EndBusyCursor()
-                        authorNotes.ShowModal()
-                        wx.BeginBusyCursor()
-                        authorNotes.Destroy()
-                    except Exception as exc:
-                        logger.warning(exc)
-                        pass
-                    os.chdir(sys.path[0])
-                temp = zipped.read(4)
-                logger.info(temp)
-            if temp == "SC4C":
-                configSize = struct.unpack("LL", zipped.read(8))
-                lenstring = struct.unpack("L", zipped.read(4))[0]
-                imString = zipped.read(lenstring)
-                config = Image.fromstring("RGB", configSize, imString)
-                temp = zipped.read(4)
-                logger.info("config", temp)
-            if temp != "SC4D":
-                raise IOError("SC4D")
-            r = Numeric.fromstring(zipped.read(xSize * ySize), Numeric.uint8)
-            rH = Numeric.fromstring(zipped.read(xSize * ySize), Numeric.uint8)
-            raw.close()
-            zipped = None
-            r = r.astype(Numeric.uint16)
-            rH = rH.astype(Numeric.uint16)
-            rH *= Numeric.array(256).astype(Numeric.uint16)
-            r += rH
-            del rH
-
-            class dlgstub:
-                def __init__(self):
-                    pass
-
-                def Update(self, x, y):
-                    pass
-
-            NewRegion = rgnReader.SC4Region(None, 250, dlgstub(), config)
-            NewRegion.show(dlgstub())
+            NewRegion = rgnReader.SC4Region(None, 250, DlgStub(), config)
+            NewRegion.show(DlgStub())
         except IOError as msg:
             wx.EndBusyCursor()
-            logger.info(msg)
+            logger.exception(msg)
             dlg1 = wx.MessageDialog(
                 self,
                 sc4mFile + " seems not to be a valid image file",
@@ -1134,19 +1090,23 @@ class OverView(wx.Frame):
         name = os.path.splitext(name)[0]
 
         resized = False
-        im = Image.open(paths)
+        im = None
+        with open(paths, "rb") as im_file_obj:
+            im = Image.open(im_file_obj).copy()
+
         if not (im.size[0] == configSize[0] * 64 + 1 and im.size[1] == configSize[1] * 64 + 1):
             dlg1 = wx.MessageDialog(
                 self,
                 paths
                 + " has not correct dimensions\n"
-                + "It should be (%d by %d) but it is (%d by %d)\nDo you want to resize the image to fit region dimensions?"
+                + "It should be (%d by %d) but it is (%d by %d)\n"
                 % (
                     configSize[0] * 64 + 1,
                     configSize[1] * 64 + 1,
                     im.size[0],
                     im.size[1],
-                ),
+                )
+                + "Do you want to resize the image to fit region dimensions?",
                 "Import warning",
                 wx.YES_NO | wx.YES_DEFAULT | wx.ICON_INFORMATION,
             )
@@ -1204,19 +1164,14 @@ class OverView(wx.Frame):
                 else:
                     try:
                         imSmall = subIm.crop((x * 64, 0, x * 64 + 65, 65))
-                    except:
-                        logger.info(
-                            x,
-                            y,
-                            [
-                                (
-                                    d,
-                                    (0, 0, subIm.size[0], 65),
-                                    o + (configSize[1] - y - 1) * 64 * a[1],
-                                    a,
-                                )
-                            ],
-                            65 * a[1],
+                    except Exception as crop_fail:
+                        logger.exception(crop_fail)
+                        logger.critical(
+                            (
+                                f"{x} {y}"
+                                f"{[(d, (0, 0, subIm.size[0], 65), o + (configSize[1] - y - 1) * 64 * a[1], a)]}"
+                                f"{65 * a[1]}"
+                            )
                         )
                         raise
                 r = Numeric.fromstring(imSmall.tostring(), Numeric.uint8)
@@ -1314,8 +1269,8 @@ class OverView(wx.Frame):
             )
             heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
             heightMap[::, ::] = self.region.height[
-                citySave.yPos + subRgn[1]: citySave.yPos + subRgn[1] + citySave.ySize,
-                citySave.xPos + subRgn[0]: citySave.xPos + subRgn[0] + citySave.xSize,
+                citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
+                citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
             red = (
                 (heightMap / Numeric.array(4096, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)
@@ -1342,7 +1297,8 @@ class OverView(wx.Frame):
             pathCfg = os.path.splitext(path)[0]
             pathCfg += "-config.bmp"
             config.save(pathCfg)
-        except:
+        except Exception as save_fail:
+            logger.exception(save_fail)
             wx.EndBusyCursor()
             dlg1 = wx.MessageDialog(self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR)
             dlg1.ShowModal()
@@ -1400,7 +1356,8 @@ class OverView(wx.Frame):
             pathCfg = os.path.splitext(path)[0]
             pathCfg += "-config.bmp"
             config.save(pathCfg)
-        except:
+        except Exception as save_fail:
+            logger.exception(save_fail)
             wx.EndBusyCursor()
             dlg1 = wx.MessageDialog(self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR)
             dlg1.ShowModal()
@@ -1431,10 +1388,10 @@ class OverView(wx.Frame):
         dlg1 = wx.FileDialog(
             self,
             message="Enter a valid hml file that will be displayed on import",
-            defaultDir=os.getcwd(),
+            defaultDir=base_dir,
             defaultFile="",
             wildcard="HTML files (*.HTML)|*.html",
-            style=wx.OPEN,
+            style=wx.FD_OPEN,
         )
         if dlg1.ShowModal() == wx.ID_OK:
             htmlFileName = dlg1.GetPaths()[0]
@@ -1500,18 +1457,18 @@ class OverView(wx.Frame):
         s += "SC4D"  # elevation data
         try:
             encoder = zlib.compressobj(9)
-            raw = open(path, "wb")
-            raw.write(encoder.compress(s))
-            raw.write(encoder.compress(im1.tostring()))
-            del im1
-            raw.write(encoder.compress(im2.tostring()))
-            del im2
-            raw.write(encoder.flush())
-            raw.close()
+            with open(path, "wb") as raw:
+                raw.write(encoder.compress(s))
+                raw.write(encoder.compress(im1.tostring()))
+                del im1
+                raw.write(encoder.compress(im2.tostring()))
+                del im2
+                raw.write(encoder.flush())
             pathCfg = os.path.splitext(path)[0]
             pathCfg += "-config.bmp"
             config.save(pathCfg)
-        except:
+        except Exception as compress_err:
+            logger.exception(compress_err)
             wx.EndBusyCursor()
             raise
             dlg1 = wx.MessageDialog(self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR)
@@ -1525,7 +1482,7 @@ class OverView(wx.Frame):
         dlg = wx.FileDialog(
             self,
             message="Export region as ...",
-            defaultDir=os.getcwd(),
+            defaultDir=base_dir,
             defaultFile=self.regionName,
             wildcard="SC4 Terrain files (*.SC4M)|*.SC4M" "|16bit png files (*.png)|*.png|RGB files (*.bmp)|*.bmp",
             style=wx.FD_SAVE,
@@ -1564,13 +1521,75 @@ class OverView(wx.Frame):
 
         path = os.path.join(self.mydocs, name)
 
+        # generic_error = "A problem has occured while creating the region folder"
         try:
             os.makedirs(path)
+        # FIXME: Add os indep
         except WindowsError as error:
             if error[0] == 183:
                 dlg = wx.MessageDialog(
                     self,
-                    "A region with this name already exists or at least the region folder already exists\nDo you want to save anyway (removing previous region)?",
+                    (
+                        "A region with this name already exists or at least the region folder already exists\n"
+                        "Do you want to save anyway (removing previous region)?"
+                    ),
+                    "Warning",
+                    wx.YES_NO | wx.NO_DEFAULT | wx.ICON_INFORMATION,
+                )
+                ret = dlg.ShowModal()
+                dlg.Destroy()
+                if ret == wx.ID_NO:
+                    return
+                try:
+                    allfiles = cached_listdir(path)
+                    valid = [".SC4", ".INI", ".BMP", ".PNG"]
+                    allfiles = [f for f in allfiles if os.path.splitext(f)[1].upper() in valid]
+                    for name in allfiles:
+                        os.unlink(os.path.join(path, name))
+                except OSError:
+                    dlg = wx.MessageDialog(
+                        self,
+                        ("A problem has occured while cleaning the region folder\n" "You may try to clean it yourself"),
+                        "Error while saving region",
+                        wx.OK | wx.ICON_ERROR,
+                    )
+                    dlg.ShowModal()
+                    dlg.Destroy()
+                    return
+            else:
+                dlg = wx.MessageDialog(
+                    self,
+                    (
+                        "A problem has occured while creating the region folder\n"
+                        "You should enter a valid folder name as region name"
+                    ),
+                    "Error while saving region",
+                    wx.OK | wx.ICON_ERROR,
+                )
+                dlg.ShowModal()
+                dlg.Destroy()
+                return
+        except OSError as error:
+            if error[0] == 22:
+                dlg = wx.MessageDialog(
+                    self,
+                    (
+                        "A problem has occured while creating the region folder\n"
+                        "You should enter a valid folder name as region name"
+                    ),
+                    "Error while saving region",
+                    wx.OK | wx.ICON_ERROR,
+                )
+                dlg.ShowModal()
+                dlg.Destroy()
+                return
+            elif error[0] == 17:
+                dlg = wx.MessageDialog(
+                    self,
+                    (
+                        "A region with this name already exists or at least the region folder already exists\n"
+                        "Do you want to save anyway (removing previous region)?"
+                    ),
                     "Warning",
                     wx.YES_NO | wx.NO_DEFAULT | wx.ICON_INFORMATION,
                 )
@@ -1597,55 +1616,10 @@ class OverView(wx.Frame):
             else:
                 dlg = wx.MessageDialog(
                     self,
-                    "A problem has occured while creating the region folder\nYou should enter a valid folder name as region name",
-                    "Error while saving region",
-                    wx.OK | wx.ICON_ERROR,
-                )
-                dlg.ShowModal()
-                dlg.Destroy()
-                return
-        except OSError as error:
-            if error[0] == 22:
-                dlg = wx.MessageDialog(
-                    self,
-                    "A problem has occured while creating the region folder\nYou should enter a valid folder name as region name",
-                    "Error while saving region",
-                    wx.OK | wx.ICON_ERROR,
-                )
-                dlg.ShowModal()
-                dlg.Destroy()
-                return
-            elif error[0] == 17:
-                dlg = wx.MessageDialog(
-                    self,
-                    "A region with this name already exists or at least the region folder already exists\nDo you want to save anyway (removing previous region)?",
-                    "Warning",
-                    wx.YES_NO | wx.NO_DEFAULT | wx.ICON_INFORMATION,
-                )
-                ret = dlg.ShowModal()
-                dlg.Destroy()
-                if ret == wx.ID_NO:
-                    return
-                try:
-                    allfiles = dircache.listdir(path)
-                    valid = [".SC4", ".INI", ".BMP", ".PNG"]
-                    allfiles = [f for f in allfiles if os.path.splitext(f)[1].upper() in valid]
-                    for name in allfiles:
-                        os.unlink(os.path.join(path, name))
-                except OSError:
-                    dlg = wx.MessageDialog(
-                        self,
-                        "A problem has occured while cleaning the region folder\nYou may try to clean it yourself",
-                        "Error while saving region",
-                        wx.OK | wx.ICON_ERROR,
-                    )
-                    dlg.ShowModal()
-                    dlg.Destroy()
-                    return
-            else:
-                dlg = wx.MessageDialog(
-                    self,
-                    "A problem has occured while creating the region folder\nYou should enter a valid folder name as region name",
+                    (
+                        "A problem has occured while creating the region folder\n"
+                        "You should enter a valid folder name as region name"
+                    ),
                     "Error while saving region",
                     wx.OK | wx.ICON_ERROR,
                 )
@@ -1672,15 +1646,19 @@ class OverView(wx.Frame):
         config.save(os.path.join(path, "config.bmp"))
         try:
             saved = self.region.Save(dlg1, minX, minY, subRgn)
-        except:
+        except Exception as save_exc:
+            logger.warning(save_exc)
             saved = False
         wx.EndBusyCursor()
         dlg1.Close()
         dlg1.Destroy()
-        if saved == False:
+        if saved is False:
             dlg = wx.MessageDialog(
                 self,
-                "A problem has occured while saving the cities files\nSome or all of the cities might not have been saved correctly",
+                (
+                    "A problem has occured while saving the cities files\n"
+                    "Some or all of the cities might not have been saved correctly"
+                ),
                 "Error while saving region",
                 wx.OK | wx.ICON_ERROR,
             )
@@ -1745,7 +1723,8 @@ class OverView(wx.Frame):
 
         if not os.path.isdir(self.regionPath):
             self.regionPath = os.path.split(self.regionPath)[0]
-        # logger.info(self.regionPath)
+        logger.debug(self.regionPath)
+
         # Only destroy a dialog after you're done with it.
         dlg.Destroy()
         self.waterLevel = 250
@@ -1810,397 +1789,6 @@ class OverView(wx.Frame):
             dlg.Destroy()
             raise
 
-
-# FIXME: no f clue is it me or sauce...
-"""
-class OverViewCanvas(wx.ScrolledWindow):
-    def __init__(self, parent, id=-1, size=wx.DefaultSize):
-        super().__init__(
-            self,
-            parent,
-            id,
-            (0, 0),
-            size=size,
-            style=wx.SUNKEN_BORDER | wx.FULL_REPAINT_ON_RESIZE,
-        )
-        self.parent = parent
-        self.Bind(wx.EVT_PAINT, self.OnPaint)
-        self.Bind(wx.EVT_SIZE, self.OnSize)
-        self.Bind(wx.EVT_SCROLLWIN, self.OnScroll)
-        self.Bind(wx.EVT_ERASE_BACKGROUND, self.OnEraseBackground)
-        self.Bind(wx.EVT_CHAR, self.OnKeyDown)
-        self.bmp = None
-        self.drag = False
-        self.buffer = None
-        self.wait = False
-        self.crop = None
-        self.offX = 0
-        self.offY = 0
-        self.OnSize(None)
-
-    def OnKeyDown(self, event):
-        if self.parent.btnEditMode.GetValue() and self.parent.editMode == EDITMODE_NONE:
-            if self.wait is True:
-                return
-            if event.GetModifiers() != wx.MOD_CONTROL:
-                return
-            if event.GetKeyCode() == wx.WXK_LEFT:
-                for _ in range(self.parent.zoomLevel):
-                    offX = self.offX - 1
-                    deletes = []
-                    for city in self.parent.region.allCities:
-                        if city.xPos + offX < 0:
-                            deletes.append((city.cityXPos, city.cityYPos))
-                    if len(deletes) == 0:
-                        self.offX = offX
-                self.UpdateDrawing()
-                self.wait = True
-                self.Refresh(False)
-            if event.GetKeyCode() == wx.WXK_RIGHT:
-                for _ in range(self.parent.zoomLevel):
-                    offX = self.offX + 1
-                    deletes = []
-                    for city in self.parent.region.allCities:
-                        if city.xPos + city.xSize + offX > self.parent.region.imgSize[0]:
-                            deletes.append((city.cityXPos, city.cityYPos))
-                    if len(deletes) == 0:
-                        self.offX = offX
-                self.UpdateDrawing()
-                self.wait = True
-                self.Refresh(False)
-            if event.GetKeyCode() == wx.WXK_UP:
-                for _ in range(self.parent.zoomLevel):
-                    offY = self.offY - 1
-                    deletes = []
-                    for city in self.parent.region.allCities:
-                        if city.yPos + offY < 0:
-                            deletes.append((city.cityXPos, city.cityYPos))
-                    if len(deletes) == 0:
-                        self.offY = offY
-                self.UpdateDrawing()
-                self.wait = True
-                self.Refresh(False)
-            if event.GetKeyCode() == wx.WXK_DOWN:
-                for _ in range(self.parent.zoomLevel):
-                    offY = self.offY + 1
-                    deletes = []
-                    for city in self.parent.region.allCities:
-                        if city.yPos + city.ySize + offY > self.parent.region.imgSize[1]:
-                            deletes.append((city.cityXPos, city.cityYPos))
-                    if len(deletes) == 0:
-                        self.offY = offY
-                self.UpdateDrawing()
-                self.wait = True
-                self.Refresh(False)
-
-    def OnEraseBackground(self, event):
-        pass
-
-    def OnSize(self, event):
-        size = self.ClientSize
-        if event:
-            size = event.GetSize()
-        if self.parent.region:
-            if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
-                self.buffer = wx.EmptyBitmap(*size)
-            self.UpdateDrawing(newSize=size)
-        else:
-            self.buffer = None
-        if event:
-            event.Skip()
-
-    def OnScroll(self, event):
-        size = self.ClientSize
-        x, y = self.GetViewStart()
-        if self.parent.region:
-            if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
-                self.buffer = wx.EmptyBitmap(*size)
-
-            eventType = event.GetEventType()
-            if event.GetOrientation() == wx.HORIZONTAL:
-                pos = (event.GetPosition(), y)
-            else:
-                pos = (x, event.GetPosition())
-            wx.CallAfter(self.UpdateDrawing)
-
-        else:
-            self.buffer = None
-        event.Skip()
-
-    def UpdateDrawing(self, pos=None, newSize=None, finish=True):
-        lightDir = rgnReader.Normalize((1, -5, -1))
-        size = self.ClientSize
-        if newSize:
-            size = newSize
-
-        if self.parent.zoomLevel == 1:
-            sizeDest = (
-                min(size[0], self.parent.region.height.shape[1]),
-                min(size[1], self.parent.region.height.shape[0]),
-            )
-            sizeSource = sizeDest
-        else:
-            sizeDest = (
-                min(size[0], self.parent.region.height.shape[1] / self.parent.zoomLevel),
-                min(size[1], self.parent.region.height.shape[0] / self.parent.zoomLevel),
-            )
-            sizeSource = (
-                sizeDest[0] * self.parent.zoomLevel,
-                sizeDest[1] * self.parent.zoomLevel,
-            )
-        logger.info(sizeDest, sizeSource)
-        if pos:
-            x, y = pos
-        else:
-            x, y = self.GetViewStart()
-        x *= SCROLL_RATE
-        y *= SCROLL_RATE
-        x *= self.parent.zoomLevel
-        y *= self.parent.zoomLevel
-        logger.info("Drawing from", x, y)
-        heightMap = Numeric.zeros((sizeDest[1], sizeDest[0]), Numeric.uint16)
-        try:
-            heightMap[::, ::] = self.parent.region.height[
-                y : y + sizeSource[1] : self.parent.zoomLevel,
-                x : x + sizeSource[0] : self.parent.zoomLevel,
-            ]
-        except ValueError:
-            wx.CallAfter(self.UpdateDrawing, None)
-            return
-        heightMap = heightMap.astype(Numeric.float32)
-        heightMap /= Numeric.array(10).astype(Numeric.float32)
-        rawRGB = tools3D.onePassColors(
-            False,
-            heightMap.shape,
-            self.parent.region.waterLevel,
-            heightMap,
-            rgnReader.GradientReader.paletteWater,
-            rgnReader.GradientReader.paletteLand,
-            lightDir,
-        )
-        img = wx.EmptyImage(heightMap.shape[1], heightMap.shape[0])
-        img.SetData(rawRGB)
-
-        dc = wx.BufferedDC(None, self.buffer)
-        dc.BeginDrawing()
-        dc.SetBackground(wx.Brush("Light Gray"))
-        dc.Clear()
-        dc.DrawBitmap(wx.BitmapFromImage(img), 0, 0, False)
-
-        dc.SetPen(wx.TRANSPARENT_PEN)
-        dc.SetBrush(wx.Brush("Light Gray"))
-        dc.SetLogicalFunction(wx.OR)
-        dc.DrawRectangle(
-            0 - x / self.parent.zoomLevel,
-            0 - y / self.parent.zoomLevel,
-            self.offX / self.parent.zoomLevel,
-            self.parent.region.imgSize[1] / self.parent.zoomLevel,
-        )
-        dc.DrawRectangle(
-            0 - x / self.parent.zoomLevel,
-            0 - y / self.parent.zoomLevel,
-            self.parent.region.imgSize[0] / self.parent.zoomLevel,
-            self.offY / self.parent.zoomLevel,
-        )
-        dc.DrawRectangle(
-            (self.parent.region.imgSize[0] + self.offX) / self.parent.zoomLevel - x / self.parent.zoomLevel,
-            0 - y / self.parent.zoomLevel,
-            -self.offX / self.parent.zoomLevel,
-            self.parent.region.imgSize[1] / self.parent.zoomLevel,
-        )
-        dc.DrawRectangle(
-            0 - x / self.parent.zoomLevel,
-            (self.parent.region.imgSize[1] + self.offY) / self.parent.zoomLevel - y / self.parent.zoomLevel,
-            self.parent.region.imgSize[0] / self.parent.zoomLevel,
-            -self.offY / self.parent.zoomLevel,
-        )
-        dc.SetLogicalFunction(wx.COPY)
-
-        if self.parent.overlayCbx.GetValue():
-            self.AddMasked(
-                dc,
-                self.parent.zoomLevel,
-                self.parent.region,
-                x / self.parent.zoomLevel,
-                y / self.parent.zoomLevel,
-            )
-            self.AddGrid(
-                dc,
-                self.parent.zoomLevel,
-                self.parent.region,
-                x / self.parent.zoomLevel,
-                y / self.parent.zoomLevel,
-            )
-            self.AddOverlay(
-                dc,
-                self.parent.zoomLevel,
-                self.parent.region,
-                x / self.parent.zoomLevel,
-                y / self.parent.zoomLevel,
-            )
-        if self.crop is not None:
-            dc.SetPen(wx.TRANSPARENT_PEN)
-            dc.SetBrush(wx.Brush("Light Gray"))
-            dc.SetLogicalFunction(wx.XOR)
-            crop = [
-                min(self.crop[0], self.crop[2]),
-                min(self.crop[1], self.crop[3]),
-                max(self.crop[0], self.crop[2]),
-                max(self.crop[1], self.crop[3]),
-            ]
-            self.DrawRectangle(
-                dc,
-                (crop[0] * 64 - x) / self.parent.zoomLevel,
-                (crop[1] * 64 - y) / self.parent.zoomLevel,
-                ((crop[2] - crop[0]) * 64 + 65) / self.parent.zoomLevel,
-                ((crop[3] - crop[1]) * 64 + 65) / self.parent.zoomLevel,
-            )
-            dc.SetLogicalFunction(wx.COPY)
-        if finish:
-            dc.EndDrawing()
-        self.wait = True
-        wx.CallAfter(self.Refresh, False)
-        if finish == False:
-            return dc
-
-    def AddGrid(self, dc, zoomLevel, region, xO, yO):
-        lines = []
-        s = (region.height.shape[1], region.height.shape[0])
-        for y in range(s[1] / int(64)):
-            lines.append(
-                [
-                    0 - xO,
-                    y * int(64 / zoomLevel) - yO,
-                    region.originalConfig.size[0] * int(64 / zoomLevel) - xO,
-                    y * int(64 / zoomLevel) - yO,
-                ]
-            )
-        for x in range(s[0] / int(64)):
-            lines.append(
-                [
-                    x * int(64 / zoomLevel) - xO,
-                    0 - yO,
-                    x * int(64 / zoomLevel) - xO,
-                    region.originalConfig.size[1] * int(64 / zoomLevel) - yO,
-                ]
-            )
-        # dc.SetPen(wx.Pen( wx.Colour( 100,100,100 ) ) )
-        dc.SetPen(wx.Pen("Light Gray"))
-        dc.DrawLineList(
-            [
-                (
-                    x1 + self.offX / zoomLevel,
-                    y1 + self.offY / zoomLevel,
-                    x2 + self.offX / zoomLevel,
-                    y2 + self.offY / zoomLevel,
-                )
-                for x1, y1, x2, y2 in lines
-            ]
-        )
-
-    def AddOverlay(self, dc, zoomLevel, region, xO, yO):
-        dc.SetPen(wx.Pen("WHITE"))
-        dc.SetBrush(wx.Brush("WHITE", wx.TRANSPARENT))
-        colours = [
-            0,
-            wx.Colour(255, 0, 0),
-            wx.Colour(0, 255, 0),
-            0,
-            wx.Colour(0, 0, 255),
-        ]
-        sizes = [0, 64, 128, 0, 256]
-        for city in region.allCities:
-            x = int(city.xPos / zoomLevel)
-            y = int(city.yPos / zoomLevel)
-            width = sizes[city.cityXSize] / zoomLevel
-            height = sizes[city.cityYSize] / zoomLevel
-            dc.SetPen(wx.Pen("WHITE"))
-            dc.SetBrush(wx.Brush("WHITE", wx.TRANSPARENT))
-            dc.SetPen(wx.Pen(colours[city.cityXSize]))
-            dc.SetBrush(wx.Brush(colours[city.cityXSize], wx.TRANSPARENT))
-            self.DrawRectangle(dc, x - xO, y - yO, width, height)
-            self.DrawRectangle(dc, x - xO + 1, y - yO + 1, width - 2, height - 2)
-
-    def AddMasked(self, dc, zoomLevel, region, xO, yO):
-        dc.SetPen(wx.Pen("LIGHT GRAY"))
-        dc.SetBrush(wx.Brush("LIGHT GRAY", wx.CROSSDIAG_HATCH))
-        width = 64 / zoomLevel
-        height = 64 / zoomLevel
-        for x, y in region.missingCities:
-            x = int(x * 64 / zoomLevel)
-            y = int(y * 64 / zoomLevel)
-            self.DrawRectangle(dc, x - xO, y - yO, width, height)
-
-    def HighlightCity(self, zoomLevel, region, pos):
-        dc = self.UpdateDrawing(finish=False)
-        xO, yO = self.GetViewStart()
-        colours = [
-            0,
-            wx.Colour(255, 0, 0),
-            wx.Colour(0, 255, 0),
-            0,
-            wx.Colour(0, 0, 255),
-        ]
-        for city in region.allCities:
-            if (
-                pos[0] >= city.cityXPos
-                and pos[0] < city.cityXPos + city.cityXSize
-                and pos[1] >= city.cityYPos
-                and pos[1] < city.cityYPos + city.cityYSize
-            ):
-                x = int(city.xPos / zoomLevel)
-                y = int(city.yPos / zoomLevel)
-                width = int(city.xSize / zoomLevel)
-                height = int(city.ySize / zoomLevel)
-                dc.SetPen(wx.Pen(colours[city.cityXSize]))
-                dc.SetBrush(wx.Brush(colours[city.cityXSize], wx.CROSSDIAG_HATCH))
-                self.DrawRectangle(dc, x + 1 - xO, y + 1 - yO, width - 2, height - 2)
-                self.DrawRectangle(dc, x - xO, y - yO, width, height)
-                self.DrawRectangle(dc, x - xO - 1, y - 1 - yO, width + 2, height + 2)
-                break
-        dc.EndDrawing()
-
-    def HighlightNewCity(self, zoomLevel, region, pos, size):
-        dc = self.UpdateDrawing(finish=False)
-        xO, yO = self.GetViewStart()
-        colours = [
-            0,
-            wx.Colour(255, 0, 0),
-            wx.Colour(0, 255, 0),
-            0,
-            wx.Colour(0, 0, 255),
-        ]
-        x = int(pos[0] * 64 / zoomLevel)
-        y = int(pos[1] * 64 / zoomLevel)
-        width = size * 64 / zoomLevel
-        height = size * 64 / zoomLevel
-        dc.SetPen(wx.Pen(colours[size]))
-        dc.SetBrush(wx.Brush(colours[size], wx.TRANSPARENT))
-        self.DrawRectangle(dc, x + 1 - xO, y + 1 - yO, width - 2, height - 2)
-        self.DrawRectangle(dc, x - xO, y - yO, width, height)
-        self.DrawRectangle(dc, x - 1 - xO, y - 1 - yO, width + 2, height + 2)
-        dc.EndDrawing()
-
-    def DrawRectangle(self, dc, x, y, width, height):
-        dc.DrawRectangle(
-            x + self.offX / self.parent.zoomLevel,
-            y + self.offY / self.parent.zoomLevel,
-            width,
-            height,
-        )
-
-    def OnPaint(self, event):
-        if self.buffer is None:
-            self.clear = False
-            self.wait = False
-            dc = wx.PaintDC(self)
-            self.DoPrepareDC(dc)
-            dc.SetBackground(wx.Brush(self.GetBackgroundColour()))
-            dc.Clear()
-        if self.buffer is not None:
-            self.wait = False
-            dc = wx.BufferedPaintDC(self, self.buffer, wx.BUFFER_CLIENT_AREA)
-"""
 
 class OverViewCanvas(wx.ScrolledWindow):
     def __init__(self, parent, id=-1, size=wx.DefaultSize):
@@ -2291,7 +1879,7 @@ class OverViewCanvas(wx.ScrolledWindow):
             size = event.GetSize()
         if self.parent.region:
             if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
-                self.buffer = wx.EmptyBitmap(*size)
+                self.buffer = wx.Bitmap(*size)
             self.UpdateDrawing(newSize=size)
         else:
             self.buffer = None
@@ -2305,12 +1893,14 @@ class OverViewCanvas(wx.ScrolledWindow):
             if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
                 self.buffer = wx.EmptyBitmap(*size)
 
-            eventType = event.GetEventType()
             # FIXME: redundant ?
+            """
+            eventType = event.GetEventType()
             if event.GetOrientation() == wx.HORIZONTAL:
                 pos = (event.GetPosition(), y)
             else:
                 pos = (x, event.GetPosition())
+            """
             wx.CallAfter(self.UpdateDrawing)
 
         else:
@@ -2338,7 +1928,7 @@ class OverViewCanvas(wx.ScrolledWindow):
                 sizeDest[0] * self.parent.zoomLevel,
                 sizeDest[1] * self.parent.zoomLevel,
             )
-        logger.info(sizeDest, sizeSource)
+        logger.info(f"{sizeDest} {sizeSource}")
         if pos:
             x, y = pos
         else:
@@ -2347,7 +1937,7 @@ class OverViewCanvas(wx.ScrolledWindow):
         y *= SCROLL_RATE
         x *= self.parent.zoomLevel
         y *= self.parent.zoomLevel
-        logger.info("Drawing from", x, y)
+        logger.debug(f"Drawing from {x}, {y}")
         heightMap = Numeric.zeros((sizeDest[1], sizeDest[0]), Numeric.uint16)
         try:
             heightMap[::, ::] = self.parent.region.height[
@@ -2359,13 +1949,15 @@ class OverViewCanvas(wx.ScrolledWindow):
             return
         heightMap = heightMap.astype(Numeric.float32)
         heightMap /= Numeric.array(10).astype(Numeric.float32)
+        # FIXME: UnicodeDecodeError: 'utf-8' codec can't decode byte 0xcc in position
+        # nvalid continuation byte
         rawRGB = tools3D.onePassColors(
             False,
             heightMap.shape,
             self.parent.region.waterLevel,
             heightMap,
-            rgnReader.GradientReader.paletteWater,
-            rgnReader.GradientReader.paletteLand,
+            rgnReader.GRADIENT_READER.paletteWater,
+            rgnReader.GRADIENT_READER.paletteLand,
             lightDir,
         )
         img = wx.EmptyImage(heightMap.shape[1], heightMap.shape[0])
@@ -2590,4 +2182,3 @@ class OverViewCanvas(wx.ScrolledWindow):
         if self.buffer is not None:
             self.wait = False
             dc = wx.BufferedPaintDC(self, self.buffer, wx.BUFFER_CLIENT_AREA)
-

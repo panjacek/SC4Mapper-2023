@@ -16,8 +16,10 @@ import tools3D
 import wx
 from PIL import Image, ImageDraw
 
+from enum import Enum
 # import BmpImagePlugin
-from sc4_mapper import GradientReader
+from sc4_mapper import utils
+from sc4_mapper.GradientReader import GradientReader
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,13 @@ Image._initialized = 2
 generic_saveValue = 3
 COMPRESSED_SIG = 0xFB10
 
+# FIXME: hacky hacks
+GRADIENT_READER = GradientReader("static/basicColors.ini")
+try:
+    with Image.open("/app/region_tests/Breslau/config.bmp") as im:
+        print(im)
+except Exception as exc:
+    logger.critical(exc)
 
 
 # FIXME: thats hack for missing dircache... not sure its needed
@@ -47,6 +56,7 @@ def Normalize(p1):
     try:
         return (p1[0] / norm, p1[1] / norm, p1[2] / norm)
     except Exception as exc:
+        logger.warning(exc)
         return (0, 0, 0)
 
 
@@ -57,8 +67,8 @@ def ComputeOneRGB(bLight, height, waterLevel, region):
         height.shape,
         waterLevel,
         height,
-        GradientReader.paletteWater,
-        GradientReader.paletteLand,
+        GRADIENT_READER.paletteWater,
+        GRADIENT_READER.paletteLand,
         lightDir,
     )
     rgb = Numeric.fromstring(rawRGB, Numeric.int8)
@@ -66,18 +76,35 @@ def ComputeOneRGB(bLight, height, waterLevel, region):
     return rgb
 
 
+class TGIenum(Enum):
+    heights = (0xA9DD6FF4, 0xE98F9525, 0x00000001)
+
+
 class SC4Entry(object):
     def __init__(self, buffer, idx):
         self.compressed = False
+        logger.debug(f"{buffer} - {len(buffer)}")
         self.buffer = buffer
-        t, g, i, self.fileLocation, self.filesize = struct.unpack("3Lll", buffer)
-        self.TGI = {"t": t, "g": g, "i": i}
+        # FIXME: this is broken atm
+        # t, g, i, self.fileLocation, self.filesize = struct.unpack("3Lll", buffer)
+        t, g, i, self.fileLocation, self.filesize = struct.unpack("3iii", buffer)
+        self.TGI = {"t": hex(t), "g": g, "i": i}
         self.initialFileLocation = self.fileLocation
         self.order = idx
+        logger.debug(f"{self.TGI} -- {self.fileLocation}, {self.filesize}")
+
+    def read_file(self, read_full=True, decompress=False):
+        logger.debug("Reading full")
+        self.raw_content = None
+        with open(self.file_name) as sc4_file:
+            sc4_file.seek(self.fileLocation)
+            self.raw_content = sc4_file.read(self.filesize)
+            logger.debug(self.raw_content)
 
     def ReadFile(self, sc4, readWhole=True, decompress=False):
         self.rawContent = None
         if readWhole:
+            logger.debug("Reading full")
             sc4.seek(self.fileLocation)
             self.rawContent = sc4.read(self.filesize)
             if decompress:
@@ -96,6 +123,7 @@ class SC4Entry(object):
                 self.content = self.rawContent
 
     def IsItThisTGI(self, tgi):
+        logger.debug(f"{tgi} vs self={self.TGI}:")
         return tgi[0] == self.TGI["t"] and tgi[1] == self.TGI["g"] and tgi[2] == self.TGI["i"]
 
     def GetDWORD(self, pos):
@@ -111,6 +139,7 @@ class SaveFile(object):
     def __init__(self, fileName):
         """load filename which should be a blank city"""
         self.fileName = fileName
+        # FIXME: whyyyy whyyy... with openme
         self.sc4 = open(self.fileName, "rb")
         self.ReadHeader()
         self.ReadEntries()
@@ -118,8 +147,9 @@ class SaveFile(object):
     def ReadHeader(self):
         """read the SC4 DBPF header"""
         self.header = self.sc4.read(96)
+        # FIXME: py2 badddas
         self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
-        raw = struct.unpack("4s17I24s", self.header)
+        raw = struct.unpack("4s17i24s", self.header)
         self.indexRecordEntryCount = raw[9]
         self.indexRecordPosition = raw[10]
         self.indexRecordLength = raw[11]
@@ -139,6 +169,7 @@ class SaveFile(object):
         header = self.sc4.read(self.indexRecordLength)
         for idx in range(self.indexRecordEntryCount):
             entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
+            
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
                 (0xCA027EDB, 0xCA027EE1, 0x00000000)
             ):
@@ -158,8 +189,11 @@ class SaveFile(object):
         global generic_saveValue
         time.sleep(0.1)
         self.heightMap = heightMap
+        # FIXME: redundant
+        """
         xSize = self.heightMap.shape[0]
         ySize = self.heightMap.shape[1]
+        """
         newData = QFS.encode(struct.pack("H", 0x2) + self.heightMap.tostring())
         newData = struct.pack("l", len(newData)) + newData
         self.indexRecordPosition = 96
@@ -172,15 +206,15 @@ class SaveFile(object):
             + struct.pack("l", self.indexRecordPosition)
             + self.header[0x28 + 4 : 96]
         )
-        self.sc4 = open(self.fileName, "rb")
-        for entry in self.entries:
-            if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
-                (0xCA027EDB, 0xCA027EE1, 0x00000000)
-            ):
-                entry.ReadFile(self.sc4, True, True)
-            if entry.rawContent is None:
-                entry.ReadFile(self.sc4, True)
-        self.sc4.close()
+        with open(self.fileName, "rb") as sc4:
+            for entry in self.entries:
+                if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
+                    (0xCA027EDB, 0xCA027EE1, 0x00000000)
+                ):
+                    entry.ReadFile(sc4, True, True)
+                if entry.rawContent is None:
+                    entry.ReadFile(sc4, True)
+        # FIXME: .... nope dangerzone
         while 1:
             try:
                 self.sc4 = open(saveName, "wb")
@@ -276,6 +310,7 @@ class SaveFile(object):
 def Save(city, folder, color, waterLevel):
     """Save a city file, build the thumbnail for region view"""
     mainPath = sys.path[0]
+    # FIXME: this looks bad
     os.chdir(mainPath)
     if city.cityXSize == 1:
         name = "City - Small.sc4"
@@ -314,7 +349,8 @@ class SC4File(object):
     def __init__(self, fileName):
         """the file is open here, and closed in ReadEntries"""
         self.fileName = fileName
-        self.sc4 = open(self.fileName, "rb")
+        # FIXME: whyyyy whyyy... with openme
+        # self.sc4 = open(self.fileName, "rb")
 
     def AtPos(self, x, y):
         """check if the city is at a specific coordinate ( in config.bmp coordinate )"""
@@ -356,9 +392,14 @@ class SC4File(object):
         ]
 
     def ReadHeader(self):
-        self.header = self.sc4.read(96)
-        self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
-        raw = struct.unpack("4s17I24s", self.header)
+        with open(self.fileName, "rb") as sc4_file_obj:
+            self.header = sc4_file_obj.read(96)
+        # FIXME: thats some black magic at this hour... no idea...
+        # self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
+        my_zeroes = bytes(0 for x in range(12))
+        self.header = self.header[0:0x30] + my_zeroes + self.header[0x30 + 12 : 96]
+
+        raw = struct.unpack("4s17i24s", self.header)
         self.indexRecordEntryCount = raw[9]
         self.indexRecordPosition = raw[10]
         self.indexRecordLength = raw[11]
@@ -372,30 +413,36 @@ class SC4File(object):
         self.indexRecordType = raw[8]
 
         logger.info(
-            os.path.split(self.fileName)[1],
-            self.indexRecordPosition,
-            self.indexRecordEntryCount,
-            self.indexRecordLength,
+            f"{os.path.split(self.fileName)[1]} {self.indexRecordPosition} "
+            f"{self.indexRecordEntryCount} {self.indexRecordLength}"
         )
 
     def ReadEntries(self):
         """Read all entries, only a few are read deeply and only the height entry is kept"""
         self.entries = []
-        self.sc4.seek(self.indexRecordPosition)
-        header = self.sc4.read(self.indexRecordLength)
+        with open(self.fileName, "rb") as sc4_file_obj:
+            sc4_file_obj.seek(self.indexRecordPosition)
+            header = sc4_file_obj.read(self.indexRecordLength)
+
+        logger.debug(header)
         for idx in range(self.indexRecordEntryCount):
             entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
+
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
                 (0xCA027EDB, 0xCA027EE1, 0x00000000)
             ):
-                entry.ReadFile(self.sc4, True, True)
+                # entry.ReadFile(self.sc4, True, True)
+                with open(self.fileName, "rb") as sc4_file_obj:
+                    entry.read_file(sc4_file_obj, True, True)
+
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)):
                 logger.info("This was the terrain")
                 self.heightMapEntry = entry
+
             if entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                 logger.info("This was the city info", entry.compressed)
                 # FIXME:?????
-                logger.info("version ")  # , hex(entry.GetDWORD( 0x00 ))
+                logger.info(f"version {hex(entry.GetDWORD(0x00))}")
                 version = entry.GetDWORD(0x00)
                 self.cityXPos = entry.GetDWORD(0x04)
                 self.cityYPos = entry.GetDWORD(0x08)
@@ -422,12 +469,13 @@ class SC4File(object):
                     self.cityName = "weird name"
         logger.info("finished reading the sc4")
         logger.info("--" * 20)
+
+        # FIXME: above can exit without actual size
         self.ySize = self.cityYSize * 64 + 1
         self.xSize = self.cityXSize * 64 + 1
         self.xPos = self.cityXPos * 64
         self.yPos = self.cityYPos * 64
         header = None
-        self.sc4.close()
 
 
 class CityProxy(object):
@@ -485,7 +533,7 @@ class CityProxy(object):
         ]
 
 
-def WorkTheconfig(config, waterLevel):
+def parse_config(config, waterLevel):
     """Read the config.bmp, verify it, and create the city proxies for it"""
     verified = Numeric.zeros(config.size, Numeric.int8)
 
@@ -566,23 +614,23 @@ def WorkTheconfig(config, waterLevel):
                         VerifyLarge(x, y)
                         bigs.append((x, y))
                         big += 1
-                    except:
-                        logger.info(x, y, "not blue")
+                    except Exception as exc:
+                        logger.warning(f"{x}, {y} not blue: {exc}")
                         raise
                 if Greenish(rgb):
                     try:
                         VerifyMedium(x, y)
                         mediums.append((x, y))
                         medium += 1
-                    except:
-                        logger.info(x, y, "not green")
+                    except Exception as exc:
+                        logger.warning(f"{x}, {y} not green: {exc}")
                         raise
                 if Redish(rgb):
                     smalls.append((x, y))
                     small += 1
-    logger.info("big cities = ", big)
-    logger.info("medium cities = ", medium)
-    logger.info("small cities = ", small)
+
+    for name, x in zip(["big", "medium", "small"], [big, medium, small]):
+        logger.info(f"{name}={x}")
     cities = (
         [CityProxy(waterLevel, c[0], c[1], 1, 1) for c in smalls]
         + [CityProxy(waterLevel, c[0], c[1], 2, 2) for c in mediums]
@@ -603,11 +651,13 @@ def BuildBestConfig(configSize):
     if rX == 3 or rX == 2:
         nbMediumX = 1
     nbBigY = configSize[1] / 4
-    nbSmallY = 0
+    # nbSmallY = 0
     nbMediumY = 0
     rY = configSize[1] % 4
-    if rY == 1 or rY == 3:
+    # FIXME: redundant
+    """if rY == 1 or rY == 3:
         nbSmallY = 1
+    """
     if rY == 3 or rY == 2:
         nbMediumY = 1
     logger.info(configSize[0], rX, nbBigX, "(B)", nbMediumX, "(M)", nbSmallX, "(S)")
@@ -630,20 +680,30 @@ class SC4Region(object):
         else:
             self.folder = folder
             allfiles = cached_listdir(folder)
+            logger.debug(allfiles)
             allCityFileNames = [x for x in allfiles if os.path.splitext(x)[1] == ".sc4"]
             try:
-                self.config = Image.open(encodeFilaneme(os.path.join(folder, "config.bmp")))
-            except:
+                config_file_name = utils.encodeFilename(os.path.join(folder, "config.bmp"))
+                config_file_name = os.path.join(folder, "config.bmp")
+                logger.debug(f"{config_file_name} - {type(config_file_name)}")
+                # self.config = Image.open(config_file_name)
+                config_file_name = "/app/region_tests/San Francisco/config.bmp"
+                with open(config_file_name, "rb") as bmp_temp:
+                    self.config = Image.open(bmp_temp).copy()
+            except Exception as exc:
+                logger.exception(exc)
                 self.config = None
+                raise
         self.allCities = []
 
         if self.config:
             self.config = self.config.convert("RGB")
             self.originalConfig = self.config.copy()
-            self.allCities = WorkTheconfig(self.config, waterLevel)
+            self.allCities = parse_config(self.config, waterLevel)
         else:
             self.originalConfig = None
 
+        # Verify saves vs config
         for save in allCityFileNames:
             if dlg is not None:
                 dlg.Update(1, "Please wait while loading the region" + "\nReading " + save)
@@ -801,7 +861,7 @@ class SC4Region(object):
 
     def IsValid(self):
         "the region is valid if there is at least one city or the config.bmp is ok"
-        return len(self.allCities) > 0 or self.config != None
+        return len(self.allCities) > 0 or self.config is not None
 
     def Save(self, dlg, minX, minY, subRgn):
         "save the region to SC4File"
@@ -847,22 +907,22 @@ class SC4Region(object):
                 citySave.heightMap.shape,
                 self.waterLevel,
                 citySave.heightMap,
-                GradientReader.paletteWater,
-                GradientReader.paletteLand,
+                GRADIENT_READER.paletteWater,
+                GRADIENT_READER.paletteLand,
                 lightDir,
             )
             logger.info(citySave.heightMap.shape, len(rawRGB))
             try:
                 if not Save(citySave, self.folder, rawRGB, self.waterLevel):
                     saved = False
-            except:
-                logger.info(
-                    "problem while saving",
-                    citySave.fileName,
-                    city.cityXPos,
-                    city.cityYPos,
-                    city.cityXSize,
-                    city.cityYSize,
+            except Exception as exc:
+                logger.exception(exc)
+                logger.debug(
+                    (
+                        "problem while saving:\n"
+                        f"{citySave.fileName} {city.cityXPos}, {city.cityYPos}"
+                        f"{city.cityXSize}, {city.cityYSize}"
+                    )
                 )
                 saved = False
             citySave.heightMap = None
@@ -911,6 +971,3 @@ class SC4Region(object):
         dlg.Update(2, "Please wait while loading the region\nBuilding textures")
         logger.info("region read")
         return
-
-
-GradientReader.Init("static/basicColors.ini")

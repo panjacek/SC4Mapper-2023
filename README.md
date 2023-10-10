@@ -37,6 +37,11 @@ pip3 install -e .
 
 ```
 
+clean stdout from gtk errors via
+```
+SC4App 2>&1 | grep -v "Gtk-WARNING\|dconf-WARNING\|^$"
+```
+
 Contributors
 ============
 - Wouanagaine

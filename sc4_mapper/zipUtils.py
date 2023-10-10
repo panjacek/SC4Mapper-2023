@@ -13,7 +13,7 @@ class ZipInputStream:
         self.zip = zlib.decompressobj()
         self.pos = 0  # position in zipped stream
         self.offset = 0  # position in unzipped stream
-        self.data = ""
+        self.data = b""
 
     def __fill(self, bytes):
         if self.zip:

@@ -56,7 +56,9 @@ class ModalQuestion(wx.Dialog):
         line = wx.StaticLine(self, size=(20, -1), style=wx.LI_HORIZONTAL)
         topSizer.Add(
             line,
-            flag=wx.EXPAND | wx.ALIGN_CENTER_VERTICAL | wx.RIGHT | wx.TOP,
+            # FIXME: wx EXPAND assertion Error
+            # flag=wx.EXPAND | wx.ALIGN_CENTER_VERTICAL | wx.RIGHT | wx.TOP,
+            flag=wx.RIGHT | wx.TOP,
             border=5,
         )
 
