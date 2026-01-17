@@ -1,31 +1,40 @@
-FROM python:3.13-slim AS wx_base
+# Clean Dockerfile for SC4Mapper-2013 using Debian system packages
+FROM debian:bookworm-slim
 
+# Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
-WORKDIR /app
 
-ARG WXPYTHON_WHEEL_NAME=wxPython-4.2.2-cp313-cp313-linux_x86_64.whl
-ARG WXPYTHON_WHEEL_URL=https://extras.wxpython.org/wxPython4/extras/linux/gtk3/ubuntu-24.04/${WXPYTHON_WHEEL_NAME}
-
-
-RUN apt update \
-    && apt install -y --no-install-recommends \
-        make \
-        wget \
-    && wget ${WXPYTHON_WHEEL_URL} \
-    && pip install --user --no-cache-dir ${WXPYTHON_WHEEL_NAME} \
-    && rm -rf ${WXPYTHON_WHEEL_NAME} \
-    && apt clean \
+# Install dependencies via apt for stability
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-wxgtk4.0 \
+    python3-numpy \
+    python3-pil \
+    build-essential \
+    python3-dev \
+    make \
+    libgtk-3-0 \
+    libgl1-mesa-glx \
+    libglu1-mesa \
+    libsdl2-2.0-0 \
+    libnotify4 \
+    libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
-
-FROM python:3.13-slim AS app
-COPY --from=wx_base /root/.local /root/.local
-COPY --from=wx_base /usr/bin/make /usr/bin/make
-
 WORKDIR /app
 
-ADD ./requirements.txt /app
+# Copy source
+COPY . .
 
-RUN pip install -r requirements.txt --no-cache-dir
+# Build C extensions (QFS and tools3D)
+RUN make -C Modules && \
+    mkdir -p /opt/libs && \
+    cp Modules/*.so /opt/libs/
 
-CMD /bin/bash
+# Set environment
+ENV PYTHONPATH=/app:/opt/libs
+ENV DISPLAY=:0
+
+# Default command to run the app
+ENTRYPOINT ["python3", "-m", "sc4_mapper.SC4MapApp"]

@@ -18,7 +18,6 @@ import wx
 from PIL import Image, ImageDraw
 
 # import BmpImagePlugin
-from sc4_mapper import utils
 from sc4_mapper.gradient_reader import GradientReader
 
 logger = logging.getLogger(__name__)
@@ -29,12 +28,6 @@ COMPRESSED_SIG = 0xFB10
 
 # FIXME: hacky hacks
 GRADIENT_READER = GradientReader("static/basicColors.ini")
-try:
-    with Image.open("/app/region_tests/Breslau/config.bmp") as im:
-        print(im)
-except Exception as exc:
-    logger.critical(exc)
-
 
 # FIXME: thats hack for missing dircache... not sure its needed
 global_cache = {}
@@ -118,7 +111,9 @@ class SC4Entry:
             self.rawContent = sc4.read(self.filesize)
             if decompress:
                 if len(self.rawContent) >= 8:
-                    compress_sig = struct.unpack("H", self.rawContent[0x04 : 0x04 + 2])[0]
+                    compress_sig = struct.unpack("H", self.rawContent[0x04 : 0x04 + 2])[
+                        0
+                    ]
                     if compress_sig == COMPRESSED_SIG:
                         self.compressed = True
             if self.compressed:
@@ -133,7 +128,11 @@ class SC4Entry:
 
     def IsItThisTGI(self, tgi):
         logger.debug(f"{tgi} vs self={self.TGI}:")
-        return tgi[0] == self.TGI["t"] and tgi[1] == self.TGI["g"] and tgi[2] == self.TGI["i"]
+        return (
+            tgi[0] == self.TGI["t"]
+            and tgi[1] == self.TGI["g"]
+            and tgi[2] == self.TGI["i"]
+        )
 
     def GetDWORD(self, pos):
         return struct.unpack("i", self.content[pos : pos + 4])[0]
@@ -181,9 +180,9 @@ class SaveFile:
         for idx in range(self.indexRecordEntryCount):
             entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
 
-            if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
-                (0xCA027EDB, 0xCA027EE1, 0x00000000)
-            ):
+            if entry.IsItThisTGI(
+                (0xA9DD6FF4, 0xE98F9525, 0x00000001)
+            ) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                 entry.ReadFile(self.sc4, True, True)
             else:
                 entry.ReadFile(self.sc4)
@@ -219,9 +218,9 @@ class SaveFile:
         )
         with open(self.fileName, "rb") as sc4:
             for entry in self.entries:
-                if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
-                    (0xCA027EDB, 0xCA027EE1, 0x00000000)
-                ):
+                if entry.IsItThisTGI(
+                    (0xA9DD6FF4, 0xE98F9525, 0x00000001)
+                ) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                     entry.ReadFile(sc4, True, True)
                 if entry.rawContent is None:
                     entry.ReadFile(sc4, True)
@@ -233,7 +232,8 @@ class SaveFile:
             except IOError:
                 dlg = wx.MessageDialog(
                     None,
-                    "file %s seems to be ReadOnly\nDo you want to skip?(Yes)\nOr retry ?(No)" % (saveName),
+                    "file %s seems to be ReadOnly\nDo you want to skip?(Yes)\nOr retry ?(No)"
+                    % (saveName),
                     "Warning",
                     wx.YES_NO | wx.ICON_QUESTION,
                 )
@@ -247,7 +247,11 @@ class SaveFile:
         pos = self.indexRecordPosition + self.indexRecordLength
         for entry in self.entries:
             entry.fileLocation = pos
-            newbuffer = entry.buffer[0:0x0C] + struct.pack("l", entry.fileLocation) + entry.buffer[0x0C + 4 :]
+            newbuffer = (
+                entry.buffer[0:0x0C]
+                + struct.pack("l", entry.fileLocation)
+                + entry.buffer[0x0C + 4 :]
+            )
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)):  # heights
                 newbuffer = (
                     entry.buffer[0:0x0C]
@@ -295,7 +299,9 @@ class SaveFile:
                 entry.rawContent = pngData
                 entry.compressed = 0
                 entry.filesize = len(pngData)
-            if entry.IsItThisTGI((0x8A2482B9, 0x4A2482BB, 0x00000002)):  # alpha region view
+            if entry.IsItThisTGI(
+                (0x8A2482B9, 0x4A2482BB, 0x00000002)
+            ):  # alpha region view
                 n = os.path.splitext(saveName)[0]
                 png = open(n + "_alpha.PNG", "rb")
                 pngData = png.read()
@@ -329,10 +335,17 @@ def Save(city, folder, color, waterLevel):
         name = "City - Medium.sc4"
     if city.city_x_size == CitySize.LARGE.value:
         name = "City - Large.sc4"
-    city.fileName = folder + "/" + "City - New city(%03d-%03d).sc4" % (city.city_x_position, city.city_y_position)
+    city.fileName = (
+        folder
+        + "/"
+        + "City - New city(%03d-%03d).sc4"
+        % (city.city_x_position, city.city_y_position)
+    )
     BuildThumbnail(city, color, waterLevel)
     saved = SaveFile(name)
-    return saved.Save(city.city_x_position, city.city_y_position, city.heightMap, city.fileName)
+    return saved.Save(
+        city.city_x_position, city.city_y_position, city.heightMap, city.fileName
+    )
 
 
 def BuildThumbnail(city, colors, waterLevel):
@@ -445,9 +458,9 @@ class SC4File(SC4City):
         for idx in range(self.indexRecordEntryCount):
             entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
 
-            if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
-                (0xCA027EDB, 0xCA027EE1, 0x00000000)
-            ):
+            if entry.IsItThisTGI(
+                (0xA9DD6FF4, 0xE98F9525, 0x00000001)
+            ) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                 # entry.ReadFile(self.sc4, True, True)
                 with open(self.fileName, "rb") as sc4_file_obj:
                     entry.read_file(sc4_file_obj, True, True)
@@ -673,7 +686,9 @@ class SC4Region:
         """Verify saves vs config"""
         for save in self.all_city_file_names:
             if self.dlg is not None:
-                self.dlg.Update(1, "Please wait while loading the region" + "\nReading " + save)
+                self.dlg.Update(
+                    1, "Please wait while loading the region" + "\nReading " + save
+                )
             sc4 = SC4File(os.path.join(self.folder, save))
             sc4.read_header()
             sc4.read_entries()
@@ -710,9 +725,13 @@ class SC4Region:
     def _init_config(self):
         all_files = cached_listdir(self.folder)
         logger.debug(all_files)
-        self.all_city_file_names = [x for x in all_files if os.path.splitext(x)[1] == ".sc4"]
+        self.all_city_file_names = [
+            x for x in all_files if os.path.splitext(x)[1] == ".sc4"
+        ]
         try:
-            config_file_name = utils.encodeFilename(os.path.join(self.folder, "config.bmp"))
+            config_file_name = utils.encodeFilename(
+                os.path.join(self.folder, "config.bmp")
+            )
             config_file_name = os.path.join(self.folder, "config.bmp")
             logger.debug(f"{config_file_name} - {type(config_file_name)}")
             # self.config = Image.open(config_file_name)
@@ -831,7 +850,9 @@ class SC4Region:
         for city in self.all_cities:
 
             def collide(x1, y1, w1, h1, x2, y2, w2, h2):
-                return not (x1 >= x2 + w2 or x1 + w1 <= x2 or y1 >= y2 + h2 or y1 + h1 <= y2)
+                return not (
+                    x1 >= x2 + w2 or x1 + w1 <= x2 or y1 >= y2 + h2 or y1 + h1 <= y2
+                )
 
             if collide(
                 pos[0],
@@ -859,7 +880,8 @@ class SC4Region:
                 i,
                 "Please wait while saving the region"
                 + "\nSaving "
-                + " City - New city(%03d-%03d).sc4" % (city.city_x_position, city.city_y_position),
+                + " City - New city(%03d-%03d).sc4"
+                % (city.city_x_position, city.city_y_position),
             )
             citySave = CityProxy(
                 self.waterLevel,
@@ -868,12 +890,16 @@ class SC4Region:
                 city.city_x_size,
                 city.city_y_size,
             )
-            citySave.heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
+            citySave.heightMap = Numeric.zeros(
+                (citySave.ySize, citySave.xSize), Numeric.uint16
+            )
             citySave.heightMap[::, ::] = self.height[
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            citySave.heightMap = citySave.heightMap.astype(Numeric.float32) / Numeric.asarray(10, Numeric.float32)
+            citySave.heightMap = citySave.heightMap.astype(
+                Numeric.float32
+            ) / Numeric.asarray(10, Numeric.float32)
             x1 = citySave.xPos
             y1 = citySave.yPos
             x2 = x1 + citySave.xSize
@@ -945,7 +971,9 @@ class SC4Region:
                     city.xPos : city.xPos + city.xSize,
                 ] = Numeric.reshape(
                     (
-                        Numeric.fromstring(city.heightMapEntry.content[2:], Numeric.float32)
+                        Numeric.fromstring(
+                            city.heightMapEntry.content[2:], Numeric.float32
+                        )
                         * Numeric.array(10, Numeric.float32)
                     ).astype(Numeric.uint16),
                     (city.ySize, city.xSize),

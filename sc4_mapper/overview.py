@@ -93,9 +93,9 @@ class OverView(wx.Frame):
         self.btnQuit = wx.Button(self, -1, "Quit")
         self.Bind(wx.EVT_BUTTON, self.OnCloseWindow, self.btnQuit)
 
-        self.btnZoomIn = wx.Button(self, -1, "+", wx.DefaultPosition, wx.Size(24, -1))
+        self.btnZoomIn = wx.Button(self, -1, "+")
         self.Bind(wx.EVT_BUTTON, self.OnZoomIn, self.btnZoomIn)
-        self.btnZoomOut = wx.Button(self, -1, "-", wx.DefaultPosition, wx.Size(24, -1))
+        self.btnZoomOut = wx.Button(self, -1, "-")
         self.Bind(wx.EVT_BUTTON, self.OnZoomOut, self.btnZoomOut)
 
         self.overlayCbx = wx.CheckBox(self, wx.ID_ANY, "Cities\noverlay")
@@ -133,7 +133,9 @@ class OverView(wx.Frame):
         boxh.Add(self.btnExportRgn, 0)
         boxh.Add(self.btnSave, 0)
         boxh.Add(
-            wx.StaticLine(self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL),
+            wx.StaticLine(
+                self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL
+            ),
             0,
             wx.EXPAND | wx.RIGHT | wx.LEFT,
             5,
@@ -143,7 +145,9 @@ class OverView(wx.Frame):
         boxh.Add(self.btnZoomOut, 0, wx.ALIGN_CENTER_VERTICAL)
         boxh.Add(self.overlayCbx, 0, wx.ALIGN_CENTER_VERTICAL)
         boxh.Add(
-            wx.StaticLine(self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL),
+            wx.StaticLine(
+                self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL
+            ),
             0,
             wx.EXPAND | wx.RIGHT | wx.LEFT,
             5,
@@ -195,7 +199,9 @@ class OverView(wx.Frame):
         sys.exit(0)
 
     def RevertConfig(self, event):
-        self.region.all_cities = rgnReader.parse_config(self.region.originalConfig, 250.0)
+        self.region.all_cities = rgnReader.parse_config(
+            self.region.originalConfig, 250.0
+        )
         self.region.config = self.region.BuildConfig()
         self.editMode = EDITMODE_NONE
         self.btnSmall.SetValue(False)
@@ -347,7 +353,9 @@ class OverView(wx.Frame):
                 pass
             elif self.editMode == EDITMODE_NONE:
                 if event.Dragging() and self.back.crop is not None:
-                    newpos = self.back.CalcUnscrolledPosition(event.GetX(), event.GetY())
+                    newpos = self.back.CalcUnscrolledPosition(
+                        event.GetX(), event.GetY()
+                    )
                     newpos = [newpos[0] * self.zoomLevel, newpos[1] * self.zoomLevel]
                     newpos = [newpos[0] - self.back.offX, newpos[1] - self.back.offY]
                     newpos = [newpos[0] / 64, newpos[1] / 64]
@@ -406,13 +414,19 @@ class OverView(wx.Frame):
                     and origin[0] + size <= self.region.imgSize[0]
                     and origin[1] + size <= self.region.imgSize[1]
                 ):
-                    self.back.HighlightNewCity(self.zoomLevel, self.region, newpos, sizes[self.editMode])
+                    self.back.HighlightNewCity(
+                        self.zoomLevel, self.region, newpos, sizes[self.editMode]
+                    )
 
                 self.back.wait = True
                 self.back.Refresh(False)
 
     def OnLeftDown(self, event):
-        if self.btnEditMode.GetValue() and self.editMode == EDITMODE_NONE and event.controlDown:
+        if (
+            self.btnEditMode.GetValue()
+            and self.editMode == EDITMODE_NONE
+            and event.controlDown
+        ):
             # FIXME: redundant??
             """newSize = (
                 int(self.region.imgSize[0] / self.zoomLevel),
@@ -459,7 +473,9 @@ class OverView(wx.Frame):
                         (0, 0, self.region.config.size[0], self.region.config.size[1]),
                     )
                     self.region.config.paste(config, (crop[0], crop[1]))
-                    self.region.all_cities = rgnReader.parse_config(self.region.config, self.region.waterLevel)
+                    self.region.all_cities = rgnReader.parse_config(
+                        self.region.config, self.region.waterLevel
+                    )
                     self.region.config = self.region.BuildConfig()
                 self.back.crop = None
             elif self.editMode == EDITMODE_VOID:
@@ -501,7 +517,9 @@ class OverView(wx.Frame):
                                     self.region.all_cities.append(c)
                     logger.info("end split")
                     self.region.all_cities.append(
-                        rgnReader.CityProxy(250.0, newpos[0], newpos[1], currentSize, currentSize)
+                        rgnReader.CityProxy(
+                            250.0, newpos[0], newpos[1], currentSize, currentSize
+                        )
                     )
             logger.info("start build")
             self.region.config = self.region.BuildConfig()
@@ -516,7 +534,9 @@ class OverView(wx.Frame):
             message="Save file as ...",
             defaultDir=os.getcwd(),
             defaultFile="",
-            wildcard="PNG file (*.png)|*.png|" "Jpeg file (*.jpg)|*.jpg|" "Bitmap file (*.bmp)|*.bmp",
+            wildcard="PNG file (*.png)|*.png|"
+            "Jpeg file (*.jpg)|*.jpg|"
+            "Bitmap file (*.bmp)|*.bmp",
             style=wx.FD_SAVE,
         )
         if dlg.ShowModal() == wx.ID_OK:
@@ -532,7 +552,9 @@ class OverView(wx.Frame):
             dlgProg = wx.ProgressDialog(
                 "Saving overview",
                 "Please wait while saving overview",
-                maximum=len(self.region.all_cities) + len(self.region.missingCities) + 10,
+                maximum=len(self.region.all_cities)
+                + len(self.region.missingCities)
+                + 10,
                 parent=self,
                 style=0,
             )
@@ -550,7 +572,9 @@ class OverView(wx.Frame):
                 y2 = y1 + height
 
                 h = Numeric.zeros((height, width), Numeric.uint16)
-                h[:, :] = Numeric.reshape(self.region.height[y1:y2, x1:x2], (height, width))
+                h[:, :] = Numeric.reshape(
+                    self.region.height[y1:y2, x1:x2], (height, width)
+                )
                 h = h.astype(Numeric.float32)
                 h /= Numeric.array(10).astype(Numeric.float32)
                 rawRGB = tools3D.onePassColors(
@@ -578,7 +602,9 @@ class OverView(wx.Frame):
                     x2 = x1 + width
                     y2 = y1 + height
                     h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(self.region.height[y1:y2, x1:x2], (height, width))
+                    h[:, :] = Numeric.reshape(
+                        self.region.height[y1:y2, x1:x2], (height, width)
+                    )
                     h = h.astype(Numeric.float32)
                     h /= Numeric.array(10).astype(Numeric.float32)
                     rawRGB = tools3D.onePassColors(
@@ -591,7 +617,11 @@ class OverView(wx.Frame):
                         lightDir,
                     )
                     del h
-                    imCity = Image.fromstring("RGB", (width, height), rawRGB).convert("L").convert("RGB")
+                    imCity = (
+                        Image.fromstring("RGB", (width, height), rawRGB)
+                        .convert("L")
+                        .convert("RGB")
+                    )
                     del rawRGB
                     im.paste(imCity, (x1, y1))
                     del imCity
@@ -609,7 +639,9 @@ class OverView(wx.Frame):
                     x2 = x1 + width
                     y2 = y1 + height
                     h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(self.region.height[y1:y2, x1:x2], (height, width))
+                    h[:, :] = Numeric.reshape(
+                        self.region.height[y1:y2, x1:x2], (height, width)
+                    )
                     h = h.astype(Numeric.float32)
                     h /= Numeric.array(10).astype(Numeric.float32)
                     rawRGB = tools3D.onePassColors(
@@ -622,7 +654,11 @@ class OverView(wx.Frame):
                         lightDir,
                     )
                     del h
-                    imCity = Image.fromstring("RGB", (width, height), rawRGB).convert("L").convert("RGB")
+                    imCity = (
+                        Image.fromstring("RGB", (width, height), rawRGB)
+                        .convert("L")
+                        .convert("RGB")
+                    )
                     del rawRGB
                     im.paste(imCity, (x1, y1))
                     del imCity
@@ -733,7 +769,9 @@ class OverView(wx.Frame):
                     if width <= 0 or height <= 0:
                         continue
                     h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(self.region.height[y1:y2, x1:x2], (height, width))
+                    h[:, :] = Numeric.reshape(
+                        self.region.height[y1:y2, x1:x2], (height, width)
+                    )
                     h = h.astype(Numeric.float32)
                     h /= Numeric.array(10).astype(Numeric.float32)
                     rawRGB = tools3D.onePassColors(
@@ -745,7 +783,11 @@ class OverView(wx.Frame):
                         rgnReader.GRADIENT_READER.paletteLand,
                         lightDir,
                     )
-                    imCity = Image.fromstring("RGB", (width, height), rawRGB).convert("L").convert("RGB")
+                    imCity = (
+                        Image.fromstring("RGB", (width, height), rawRGB)
+                        .convert("L")
+                        .convert("RGB")
+                    )
                     del rawRGB
                     im.paste(imCity, (x1, y1))
                     del imCity
@@ -850,7 +892,9 @@ class OverView(wx.Frame):
         del r
         self.zoomLevel = 1
         self.zoomLevelPow = 0
-        self.back.SetVirtualSize((self.region.height.shape[1], self.region.height.shape[0]))
+        self.back.SetVirtualSize(
+            (self.region.height.shape[1], self.region.height.shape[0])
+        )
         self.SetFocus()
         self.CreateRgnOk()
         self.btnEditMode.Enable(True)
@@ -884,7 +928,10 @@ class OverView(wx.Frame):
         name = os.path.splitext(name)[0]
 
         im = Image.open(paths)
-        if not (im.size[0] == configSize[0] * 64 + 1 and im.size[1] == configSize[1] * 64 + 1):
+        if not (
+            im.size[0] == configSize[0] * 64 + 1
+            and im.size[1] == configSize[1] * 64 + 1
+        ):
             # TODO: make me an f-string...
             _msg_dialog_text = (
                 paths
@@ -908,7 +955,9 @@ class OverView(wx.Frame):
             res = dlg1.ShowModal()
             dlg1.Destroy()
             if res == wx.ID_YES:
-                im = im.resize((configSize[0] * 64 + 1, configSize[1] * 64 + 1), Image.BICUBIC)
+                im = im.resize(
+                    (configSize[0] * 64 + 1, configSize[1] * 64 + 1), Image.BICUBIC
+                )
             else:
                 return
         if im.mode != "L":
@@ -922,7 +971,9 @@ class OverView(wx.Frame):
         if fromConfig:
             config = Image.open(configName)
         else:
-            config = rgnReader.BuildBestConfig(configSize)  # Image.new( "RGB", configSize, "#FF0000" )
+            config = rgnReader.BuildBestConfig(
+                configSize
+            )  # Image.new( "RGB", configSize, "#FF0000" )
 
         class dlgstub:
             def __init__(self):
@@ -952,7 +1003,9 @@ class OverView(wx.Frame):
         del r
         self.zoomLevel = 1
         self.zoomLevelPow = 0
-        self.back.SetVirtualSize((self.region.height.shape[1], self.region.height.shape[0]))
+        self.back.SetVirtualSize(
+            (self.region.height.shape[1], self.region.height.shape[0])
+        )
         self.SetFocus()
         self.CreateRgnOk()
         self.btnEditMode.Enable(True)
@@ -974,7 +1027,10 @@ class OverView(wx.Frame):
         name = os.path.splitext(name)[0]
 
         im = Image.open(paths)
-        if not (im.size[0] == configSize[0] * 64 + 1 and im.size[1] == configSize[1] * 64 + 1):
+        if not (
+            im.size[0] == configSize[0] * 64 + 1
+            and im.size[1] == configSize[1] * 64 + 1
+        ):
             dlg1 = wx.MessageDialog(
                 self,
                 paths
@@ -993,7 +1049,9 @@ class OverView(wx.Frame):
             res = dlg1.ShowModal()
             dlg1.Destroy()
             if res == wx.ID_YES:
-                im = im.resize((configSize[0] * 64 + 1, configSize[1] * 64 + 1), Image.BICUBIC)
+                im = im.resize(
+                    (configSize[0] * 64 + 1, configSize[1] * 64 + 1), Image.BICUBIC
+                )
             else:
                 return
         if im.mode != "I":
@@ -1016,7 +1074,9 @@ class OverView(wx.Frame):
         )
 
         wx.BeginBusyCursor()
-        heights = Numeric.zeros((configSize[1] * 64 + 1, configSize[0] * 64 + 1), Numeric.uint16)
+        heights = Numeric.zeros(
+            (configSize[1] * 64 + 1, configSize[0] * 64 + 1), Numeric.uint16
+        )
         i = 0
         for y in range(configSize[1]):
             for x in range(configSize[0]):
@@ -1038,7 +1098,9 @@ class OverView(wx.Frame):
         if fromConfig:
             config = Image.open(configName)
         else:
-            config = rgnReader.BuildBestConfig(configSize)  # Image.new( "RGB", configSize, "#FF0000" )
+            config = rgnReader.BuildBestConfig(
+                configSize
+            )  # Image.new( "RGB", configSize, "#FF0000" )
 
         class dlgstub:
             def __init__(self):
@@ -1068,7 +1130,9 @@ class OverView(wx.Frame):
         del heights
         self.zoomLevel = 1
         self.zoomLevelPow = 0
-        self.back.SetVirtualSize((self.region.height.shape[1], self.region.height.shape[0]))
+        self.back.SetVirtualSize(
+            (self.region.height.shape[1], self.region.height.shape[0])
+        )
         self.SetFocus()
         self.CreateRgnOk()
         self.btnEditMode.Enable(True)
@@ -1094,7 +1158,10 @@ class OverView(wx.Frame):
         with open(paths, "rb") as im_file_obj:
             im = Image.open(im_file_obj).copy()
 
-        if not (im.size[0] == configSize[0] * 64 + 1 and im.size[1] == configSize[1] * 64 + 1):
+        if not (
+            im.size[0] == configSize[0] * 64 + 1
+            and im.size[1] == configSize[1] * 64 + 1
+        ):
             dlg1 = wx.MessageDialog(
                 self,
                 paths
@@ -1113,7 +1180,9 @@ class OverView(wx.Frame):
             res = dlg1.ShowModal()
             dlg1.Destroy()
             if res == wx.ID_YES:
-                im = im.resize((configSize[0] * 64 + 1, configSize[1] * 64 + 1), Image.NEAREST)
+                im = im.resize(
+                    (configSize[0] * 64 + 1, configSize[1] * 64 + 1), Image.NEAREST
+                )
                 resized = True
             else:
                 return
@@ -1137,7 +1206,9 @@ class OverView(wx.Frame):
         )
 
         wx.BeginBusyCursor()
-        heights = Numeric.zeros((configSize[1] * 64 + 1, configSize[0] * 64 + 1), Numeric.uint16)
+        heights = Numeric.zeros(
+            (configSize[1] * 64 + 1, configSize[0] * 64 + 1), Numeric.uint16
+        )
         logger.info("size", heights.shape)
         i = 0
         logger.info(im.tile)
@@ -1177,8 +1248,12 @@ class OverView(wx.Frame):
                 r = Numeric.fromstring(imSmall.tostring(), Numeric.uint8)
                 r = Numeric.reshape(r, (64 + 1, 64 + 1, 3))
                 # r = r.astype(Numeric.uint16)
-                red = r[:, :, 0].astype(Numeric.uint16) * Numeric.array(4096 / 16, Numeric.uint16)
-                green = r[:, :, 1].astype(Numeric.uint16) * Numeric.array(256 / 16, Numeric.uint16)
+                red = r[:, :, 0].astype(Numeric.uint16) * Numeric.array(
+                    4096 / 16, Numeric.uint16
+                )
+                green = r[:, :, 1].astype(Numeric.uint16) * Numeric.array(
+                    256 / 16, Numeric.uint16
+                )
                 blue = r[:, :, 2].astype(Numeric.uint16)
                 r = red
                 r += green
@@ -1199,7 +1274,9 @@ class OverView(wx.Frame):
         if fromConfig:
             config = Image.open(configName)
         else:
-            config = rgnReader.BuildBestConfig(configSize)  # Image.new( "RGB", configSize, "#FF0000" )
+            config = rgnReader.BuildBestConfig(
+                configSize
+            )  # Image.new( "RGB", configSize, "#FF0000" )
 
         class dlgstub:
             def __init__(self):
@@ -1230,7 +1307,9 @@ class OverView(wx.Frame):
         del heights
         self.zoomLevel = 1
         self.zoomLevelPow = 0
-        self.back.SetVirtualSize((self.region.height.shape[1], self.region.height.shape[0]))
+        self.back.SetVirtualSize(
+            (self.region.height.shape[1], self.region.height.shape[0])
+        )
         self.SetFocus()
         self.CreateRgnOk()
         self.btnEditMode.Enable(True)
@@ -1273,18 +1352,26 @@ class OverView(wx.Frame):
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
             red = (
-                (heightMap / Numeric.array(4096, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)
+                (heightMap / Numeric.array(4096, Numeric.uint16))
+                % Numeric.array(16, Numeric.uint16)
             ) * Numeric.array(16, Numeric.uint16)
             red = red.astype(Numeric.uint8)
-            imRed = Image.fromstring("L", (heightMap.shape[1], heightMap.shape[0]), red.tostring())
+            imRed = Image.fromstring(
+                "L", (heightMap.shape[1], heightMap.shape[0]), red.tostring()
+            )
             green = (
-                (heightMap / Numeric.array(256, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)
+                (heightMap / Numeric.array(256, Numeric.uint16))
+                % Numeric.array(16, Numeric.uint16)
             ) * Numeric.array(16, Numeric.uint16)
             green = green.astype(Numeric.uint8)
-            imGreen = Image.fromstring("L", (heightMap.shape[1], heightMap.shape[0]), green.tostring())
+            imGreen = Image.fromstring(
+                "L", (heightMap.shape[1], heightMap.shape[0]), green.tostring()
+            )
             blue = heightMap % Numeric.array(256, Numeric.uint16)
             blue = blue.astype(Numeric.uint8)
-            imBlue = Image.fromstring("L", (heightMap.shape[1], heightMap.shape[0]), blue.tostring())
+            imBlue = Image.fromstring(
+                "L", (heightMap.shape[1], heightMap.shape[0]), blue.tostring()
+            )
             imCity = Image.merge("RGB", (imRed, imGreen, imBlue))
             im.paste(imCity, (citySave.xPos, citySave.yPos))
         dlgProg.Close()
@@ -1300,7 +1387,9 @@ class OverView(wx.Frame):
         except Exception as save_fail:
             logger.exception(save_fail)
             wx.EndBusyCursor()
-            dlg1 = wx.MessageDialog(self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR)
+            dlg1 = wx.MessageDialog(
+                self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR
+            )
             dlg1.ShowModal()
             dlg1.Destroy()
             return
@@ -1345,7 +1434,9 @@ class OverView(wx.Frame):
             ]
             # heightMap *= Numeric.array( 10 ).astype( Numeric.float32 )
             heightMap = heightMap.astype(Numeric.int32)
-            imCity = Image.fromstring("I", (heightMap.shape[1], heightMap.shape[0]), heightMap.tostring())
+            imCity = Image.fromstring(
+                "I", (heightMap.shape[1], heightMap.shape[0]), heightMap.tostring()
+            )
             im.paste(imCity, (citySave.xPos, citySave.yPos))
         dlgProg.Close()
         dlgProg.Destroy()
@@ -1359,7 +1450,9 @@ class OverView(wx.Frame):
         except Exception as save_fail:
             logger.exception(save_fail)
             wx.EndBusyCursor()
-            dlg1 = wx.MessageDialog(self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR)
+            dlg1 = wx.MessageDialog(
+                self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR
+            )
             dlg1.ShowModal()
             dlg1.Destroy()
             return
@@ -1368,7 +1461,9 @@ class OverView(wx.Frame):
         wx.CallAfter(self.ShowSuccess, path)
 
     def ShowSuccess(self, path):
-        dlg1 = wx.MessageDialog(self, path + " as been exported", "Export done", wx.OK | wx.ICON_INFORMATION)
+        dlg1 = wx.MessageDialog(
+            self, path + " as been exported", "Export done", wx.OK | wx.ICON_INFORMATION
+        )
         dlg1.ShowModal()
         dlg1.Destroy()
 
@@ -1426,7 +1521,9 @@ class OverView(wx.Frame):
             ]
             # heightMap *= Numeric.array( 10 ).astype( Numeric.float32 )
             heightMap = heightMap.astype(Numeric.int32)
-            imCity = Image.fromstring("RGBA", (heightMap.shape[1], heightMap.shape[0]), heightMap.tostring())
+            imCity = Image.fromstring(
+                "RGBA", (heightMap.shape[1], heightMap.shape[0]), heightMap.tostring()
+            )
             imCity1, imCity2 = imCity.split()[:2]
             im1.paste(imCity1, (citySave.xPos, citySave.yPos))
             im2.paste(imCity2, (citySave.xPos, citySave.yPos))
@@ -1471,7 +1568,9 @@ class OverView(wx.Frame):
             logger.exception(compress_err)
             wx.EndBusyCursor()
             raise
-            dlg1 = wx.MessageDialog(self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR)
+            dlg1 = wx.MessageDialog(
+                self, path + " can't be saved", "Export error", wx.OK | wx.ICON_ERROR
+            )
             dlg1.ShowModal()
             dlg1.Destroy()
             return
@@ -1484,7 +1583,8 @@ class OverView(wx.Frame):
             message="Export region as ...",
             defaultDir=base_dir,
             defaultFile=self.regionName,
-            wildcard="SC4 Terrain files (*.SC4M)|*.SC4M" "|16bit png files (*.png)|*.png|RGB files (*.bmp)|*.bmp",
+            wildcard="SC4 Terrain files (*.SC4M)|*.SC4M"
+            "|16bit png files (*.png)|*.png|RGB files (*.bmp)|*.bmp",
             style=wx.FD_SAVE,
         )
         if dlg.ShowModal() == wx.ID_OK:
@@ -1511,7 +1611,9 @@ class OverView(wx.Frame):
         self.Refresh(False)
 
     def SaveRgn(self, event):
-        dlg = wx.TextEntryDialog(self, "Enter the name of the new region", "Region name", self.regionName)
+        dlg = wx.TextEntryDialog(
+            self, "Enter the name of the new region", "Region name", self.regionName
+        )
         if dlg.ShowModal() == wx.ID_OK:
             name = dlg.GetValue()
             dlg.Destroy()
@@ -1543,13 +1645,18 @@ class OverView(wx.Frame):
                 try:
                     allfiles = cached_listdir(path)
                     valid = [".SC4", ".INI", ".BMP", ".PNG"]
-                    allfiles = [f for f in allfiles if os.path.splitext(f)[1].upper() in valid]
+                    allfiles = [
+                        f for f in allfiles if os.path.splitext(f)[1].upper() in valid
+                    ]
                     for name in allfiles:
                         os.unlink(os.path.join(path, name))
                 except OSError:
                     dlg = wx.MessageDialog(
                         self,
-                        ("A problem has occured while cleaning the region folder\n" "You may try to clean it yourself"),
+                        (
+                            "A problem has occured while cleaning the region folder\n"
+                            "You may try to clean it yourself"
+                        ),
                         "Error while saving region",
                         wx.OK | wx.ICON_ERROR,
                     )
@@ -1600,7 +1707,9 @@ class OverView(wx.Frame):
                 try:
                     allfiles = cached_listdir(path)
                     valid = [".SC4", ".INI", ".BMP", ".PNG"]
-                    allfiles = [f for f in allfiles if os.path.splitext(f)[1].upper() in valid]
+                    allfiles = [
+                        f for f in allfiles if os.path.splitext(f)[1].upper() in valid
+                    ]
                     for name in allfiles:
                         os.unlink(os.path.join(path, name))
                 except OSError:
@@ -1701,7 +1810,9 @@ class OverView(wx.Frame):
         self.zoomLevel = 1
         self.zoomLevelPow = 0
         self.btnEditMode.Enable(True)
-        self.back.SetVirtualSize((self.region.height.shape[1], self.region.height.shape[0]))
+        self.back.SetVirtualSize(
+            (self.region.height.shape[1], self.region.height.shape[0])
+        )
 
         self.SetFocus()
         self.SetTitle("NHP SC4Mapper %s Version - " % MAPPER_VERSION + self.regionName)
@@ -1838,7 +1949,10 @@ class OverViewCanvas(wx.ScrolledWindow):
                     offX = self.offX + 1
                     deletes = []
                     for city in self.parent.region.all_cities:
-                        if city.xPos + city.xSize + offX > self.parent.region.imgSize[0]:
+                        if (
+                            city.xPos + city.xSize + offX
+                            > self.parent.region.imgSize[0]
+                        ):
                             deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offX = offX
@@ -1862,7 +1976,10 @@ class OverViewCanvas(wx.ScrolledWindow):
                     offY = self.offY + 1
                     deletes = []
                     for city in self.parent.region.all_cities:
-                        if city.yPos + city.ySize + offY > self.parent.region.imgSize[1]:
+                        if (
+                            city.yPos + city.ySize + offY
+                            > self.parent.region.imgSize[1]
+                        ):
                             deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offY = offY
@@ -1878,7 +1995,9 @@ class OverViewCanvas(wx.ScrolledWindow):
         if event:
             size = event.GetSize()
         if self.parent.region:
-            if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
+            if self.buffer is None or (
+                self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]
+            ):
                 self.buffer = wx.Bitmap(*size)
             self.UpdateDrawing(newSize=size)
         else:
@@ -1890,7 +2009,9 @@ class OverViewCanvas(wx.ScrolledWindow):
         size = self.ClientSize
         x, y = self.GetViewStart()
         if self.parent.region:
-            if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
+            if self.buffer is None or (
+                self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]
+            ):
                 self.buffer = wx.EmptyBitmap(*size)
 
             # FIXME: redundant ?
@@ -1921,8 +2042,12 @@ class OverViewCanvas(wx.ScrolledWindow):
             sizeSource = sizeDest
         else:
             sizeDest = (
-                min(size[0], self.parent.region.height.shape[1] / self.parent.zoomLevel),
-                min(size[1], self.parent.region.height.shape[0] / self.parent.zoomLevel),
+                min(
+                    size[0], self.parent.region.height.shape[1] / self.parent.zoomLevel
+                ),
+                min(
+                    size[1], self.parent.region.height.shape[0] / self.parent.zoomLevel
+                ),
             )
             sizeSource = (
                 sizeDest[0] * self.parent.zoomLevel,
@@ -1985,14 +2110,16 @@ class OverViewCanvas(wx.ScrolledWindow):
             self.offY / self.parent.zoomLevel,
         )
         dc.DrawRectangle(
-            (self.parent.region.imgSize[0] + self.offX) / self.parent.zoomLevel - x / self.parent.zoomLevel,
+            (self.parent.region.imgSize[0] + self.offX) / self.parent.zoomLevel
+            - x / self.parent.zoomLevel,
             0 - y / self.parent.zoomLevel,
             -self.offX / self.parent.zoomLevel,
             self.parent.region.imgSize[1] / self.parent.zoomLevel,
         )
         dc.DrawRectangle(
             0 - x / self.parent.zoomLevel,
-            (self.parent.region.imgSize[1] + self.offY) / self.parent.zoomLevel - y / self.parent.zoomLevel,
+            (self.parent.region.imgSize[1] + self.offY) / self.parent.zoomLevel
+            - y / self.parent.zoomLevel,
             self.parent.region.imgSize[0] / self.parent.zoomLevel,
             -self.offY / self.parent.zoomLevel,
         )

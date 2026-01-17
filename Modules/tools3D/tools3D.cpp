@@ -369,12 +369,12 @@ extern "C"
         PyObject *pLGrad ;
         int bLight;
         int xSize, ySize;
-        if (!PyArg_ParseTuple(args, "i(ii)fs#OO(fff)", &bLight,&ySize,&xSize, &waterLevel, &bufferH, &lenH, &pWGrad,&pLGrad,&lightDir[0], &lightDir[1],&lightDir[2] ) )
+        if (!PyArg_ParseTuple(args, "i(ii)fy#OO(fff)", &bLight,&ySize,&xSize, &waterLevel, &bufferH, &lenH, &pWGrad,&pLGrad,&lightDir[0], &lightDir[1],&lightDir[2] ) )
             return NULL;
         Py_BEGIN_ALLOW_THREADS
         out = ( unsigned char*)OnePassColors( bLight, xSize, ySize, waterLevel, (float*)bufferH, Gradient( pWGrad ), Gradient( pLGrad ), lightDir );
         Py_END_ALLOW_THREADS
-        pRet = Py_BuildValue( "s#", out, xSize*ySize*3 ); 
+        pRet = Py_BuildValue( "y#", out, xSize*ySize*3 ); 
         free( out );
         return pRet;
     }
@@ -388,10 +388,10 @@ extern "C"
         float waterLevel;
         int xmin,ymin,xmax,ymax;
         PyObject* pRet;
-        if (!PyArg_ParseTuple(args, "f(ii)s#s#", &waterLevel,&ySize,&xSize,&bufH,&lenH,&bufC,&lenC))
+        if (!PyArg_ParseTuple(args, "f(ii)y#y#", &waterLevel,&ySize,&xSize,&bufH,&lenH,&bufC,&lenC))
             return NULL;
         out = GenerateImage( waterLevel,xSize, ySize,(float*)bufH,(unsigned char*)bufC,&xmin,&ymin,&xmax,&ymax );
-        pRet = Py_BuildValue( "iiiis#", xmin,ymin,xmax,ymax,out,514*428*6 ); 
+        pRet = Py_BuildValue( "iiiiy#", xmin,ymin,xmax,ymax,out,514*428*6 ); 
         free( out );	
         return pRet;
     }

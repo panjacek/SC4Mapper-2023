@@ -254,13 +254,13 @@ static PyObject *QFSEncode( PyObject *self, PyObject *args )
 	int len;
 	unsigned char* out;
 	PyObject *pRet ;
-	if (!PyArg_ParseTuple(args, "s#", &buffer, &len))
+	if (!PyArg_ParseTuple(args, "y#", &buffer, &len))
         return NULL;
 	out = (unsigned char*)malloc( len*2 );
 	bufferIn = (unsigned char*)malloc( len + 2000 );
 	memcpy( bufferIn, buffer, len );
 	compress_data( (unsigned char*)bufferIn, &len, out);
-	pRet = Py_BuildValue( "s#", out, len ); 
+	pRet = Py_BuildValue( "y#", out, len ); 
 	free( out );
 	free( bufferIn );
     return pRet;
@@ -272,10 +272,10 @@ static PyObject *QFSDecode( PyObject *self, PyObject *args )
 	int len;
 	unsigned char* out;
 	PyObject *pRet ;
-	if (!PyArg_ParseTuple(args, "s#", &buffer, &len))
+	if (!PyArg_ParseTuple(args, "y#", &buffer, &len))
         return NULL;
 	out = uncompress_data( (unsigned char*)buffer, &len);
-	pRet = Py_BuildValue( "s#", out, len ); 
+	pRet = Py_BuildValue( "y#", out, len ); 
 	free( out );
     return pRet;
 }
