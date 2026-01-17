@@ -195,7 +195,7 @@ class OverView(wx.Frame):
         sys.exit(0)
 
     def RevertConfig(self, event):
-        self.region.allCities = rgnReader.parse_config(self.region.originalConfig, 250.0)
+        self.region.all_cities = rgnReader.parse_config(self.region.originalConfig, 250.0)
         self.region.config = self.region.BuildConfig()
         self.editMode = EDITMODE_NONE
         self.btnSmall.SetValue(False)
@@ -459,7 +459,7 @@ class OverView(wx.Frame):
                         (0, 0, self.region.config.size[0], self.region.config.size[1]),
                     )
                     self.region.config.paste(config, (crop[0], crop[1]))
-                    self.region.allCities = rgnReader.parse_config(self.region.config, self.region.waterLevel)
+                    self.region.all_cities = rgnReader.parse_config(self.region.config, self.region.waterLevel)
                     self.region.config = self.region.BuildConfig()
                 self.back.crop = None
             elif self.editMode == EDITMODE_VOID:
@@ -491,16 +491,16 @@ class OverView(wx.Frame):
                         done = True
                         cities = self.region.GetCitiesUnder(newpos, currentSize)
                         for city in cities:
-                            if city.cityXSize == 1:
-                                self.region.allCities.remove(city)
+                            if city.city_x_size == 1:
+                                self.region.all_cities.remove(city)
                             else:
                                 done = False
-                                newCities = city.Split()
-                                self.region.allCities.remove(city)
+                                newCities = city.split()
+                                self.region.all_cities.remove(city)
                                 for c in newCities:
-                                    self.region.allCities.append(c)
+                                    self.region.all_cities.append(c)
                     logger.info("end split")
-                    self.region.allCities.append(
+                    self.region.all_cities.append(
                         rgnReader.CityProxy(250.0, newpos[0], newpos[1], currentSize, currentSize)
                     )
             logger.info("start build")
@@ -523,7 +523,7 @@ class OverView(wx.Frame):
             wx.BeginBusyCursor()
             path = dlg.GetPath()
 
-            lightDir = rgnReader.Normalize((1, -5, -1))
+            lightDir = rgnReader.normalize((1, -5, -1))
             s = (self.region.height.shape[1], self.region.height.shape[0])
             xO = yO = 0
             colours = [0, "#FF0000", "#00FF00", 0, "#0000FF"]
@@ -532,18 +532,18 @@ class OverView(wx.Frame):
             dlgProg = wx.ProgressDialog(
                 "Saving overview",
                 "Please wait while saving overview",
-                maximum=len(self.region.allCities) + len(self.region.missingCities) + 10,
+                maximum=len(self.region.all_cities) + len(self.region.missingCities) + 10,
                 parent=self,
                 style=0,
             )
 
             im = Image.new("RGB", (self.region.imgSize[0], self.region.imgSize[1]))
-            for i, city in enumerate(self.region.allCities):
+            for i, city in enumerate(self.region.all_cities):
                 dlgProg.Update(i, "Please wait while saving overview")
                 x = int(city.xPos)
                 y = int(city.yPos)
-                width = sizes[city.cityXSize] + 1
-                height = sizes[city.cityYSize] + 1
+                width = sizes[city.city_x_size] + 1
+                height = sizes[city.city_y_size] + 1
                 x1 = x - xO + self.back.offX
                 y1 = y - yO + self.back.offY
                 x2 = x1 + width
@@ -681,16 +681,16 @@ class OverView(wx.Frame):
                         fill="#222222",
                     )
 
-                for city in self.region.allCities:
+                for city in self.region.all_cities:
                     x = int(city.xPos)
                     y = int(city.yPos)
-                    width = sizes[city.cityXSize]
-                    height = sizes[city.cityYSize]
+                    width = sizes[city.city_x_size]
+                    height = sizes[city.city_y_size]
                     # FIXME: DEAD CODE??
                     # draw.rectangle(
                     #    [x-xO+self.back.offX,
                     #    y-yO+self.back.offY,x-xO+width+self.back.offX,
-                    #    y-yO+height+self.back.offY], outline = colours[city.cityXSize] )
+                    #    y-yO+height+self.back.offY], outline = colours[city.city_x_size] )
                     draw.rectangle(
                         [
                             x - xO + 1 + self.back.offX,
@@ -698,7 +698,7 @@ class OverView(wx.Frame):
                             x - xO + width - 1 + self.back.offX,
                             y - yO + height - 1 + self.back.offY,
                         ],
-                        outline=colours[city.cityXSize],
+                        outline=colours[city.city_x_size],
                     )
                 for x, y in self.region.missingCities:
                     i += 1
@@ -1254,18 +1254,18 @@ class OverView(wx.Frame):
         dlgProg = wx.ProgressDialog(
             "Exporting as RGB",
             "Please wait while exporting the region",
-            maximum=len(self.region.allCities),
+            maximum=len(self.region.all_cities),
             parent=self,
             style=0,
         )
-        for i, city in enumerate(self.region.allCities):
+        for i, city in enumerate(self.region.all_cities):
             dlgProg.Update(i, "Please wait while exporting the region")
             citySave = rgnReader.CityProxy(
                 self.region.waterLevel,
-                city.cityXPos - minX,
-                city.cityYPos - minY,
-                city.cityXSize,
-                city.cityYSize,
+                city.city_x_position - minX,
+                city.city_y_position - minY,
+                city.city_x_size,
+                city.city_y_size,
             )
             heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
             heightMap[::, ::] = self.region.height[
@@ -1325,18 +1325,18 @@ class OverView(wx.Frame):
         dlgProg = wx.ProgressDialog(
             "Exporting as PNG",
             "Please wait while exporting the region",
-            maximum=len(self.region.allCities),
+            maximum=len(self.region.all_cities),
             parent=self,
             style=0,
         )
-        for i, city in enumerate(self.region.allCities):
+        for i, city in enumerate(self.region.all_cities):
             dlgProg.Update(i, "Please wait while exporting the region")
             citySave = rgnReader.CityProxy(
                 self.region.waterLevel,
-                city.cityXPos - minX,
-                city.cityYPos - minY,
-                city.cityXSize,
-                city.cityYSize,
+                city.city_x_position - minX,
+                city.city_y_position - minY,
+                city.city_x_size,
+                city.city_y_size,
             )
             heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
             heightMap[::, ::] = self.region.height[
@@ -1404,20 +1404,20 @@ class OverView(wx.Frame):
         dlgProg = wx.ProgressDialog(
             "Exporting as SC4M",
             "Please wait while exporting the region",
-            maximum=len(self.region.allCities),
+            maximum=len(self.region.all_cities),
             parent=self,
             style=0,
         )
         im1 = Image.new("L", (config.size[0] * 64 + 1, config.size[1] * 64 + 1))
         im2 = Image.new("L", (config.size[0] * 64 + 1, config.size[1] * 64 + 1))
-        for i, city in enumerate(self.region.allCities):
+        for i, city in enumerate(self.region.all_cities):
             dlgProg.Update(i, "Please wait while exporting the region")
             citySave = rgnReader.CityProxy(
                 self.region.waterLevel,
-                city.cityXPos - minX,
-                city.cityYPos - minY,
-                city.cityXSize,
-                city.cityYSize,
+                city.city_x_position - minX,
+                city.city_y_position - minY,
+                city.city_x_size,
+                city.city_y_size,
             )
             heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
             heightMap[::, ::] = self.region.height[
@@ -1632,7 +1632,7 @@ class OverView(wx.Frame):
         dlg1 = wx.ProgressDialog(
             "Saving region",
             "Please wait while saving the region",
-            maximum=len(self.region.allCities),
+            maximum=len(self.region.all_cities),
             parent=self,
             style=0,
         )
@@ -1678,7 +1678,7 @@ class OverView(wx.Frame):
                 self,
                 "A problem has occured while reading the region\nMaybe it is too large for your RAM",
                 "Error while loading region",
-                wx.OK | wx.ICON_ERROR
+                wx.OK | wx.ICON_ERROR,
                 # wx.YES_NO | wx.NO_DEFAULT | wx.CANCEL | wx.ICON_INFORMATION
             )
             dlg.ShowModal()
@@ -1741,7 +1741,7 @@ class OverView(wx.Frame):
         try:
             dlg.Update(0)
             NewRegion = rgnReader.SC4Region(self.regionPath, self.waterLevel, dlg)
-            if NewRegion.allCities is None:
+            if NewRegion.all_cities is None:
                 wx.EndBusyCursor()
                 dlg.Close()
                 dlg.Destroy()
@@ -1758,7 +1758,7 @@ class OverView(wx.Frame):
             dlg.Close()
             dlg.Destroy()
 
-            if not NewRegion.IsValid():
+            if not NewRegion.is_valid():
                 wx.EndBusyCursor()
                 dlg = wx.MessageDialog(
                     self,
@@ -1770,13 +1770,13 @@ class OverView(wx.Frame):
                 dlg.Destroy()
                 return None
 
-            if NewRegion.IsValid() and NewRegion.config is None:
+            if NewRegion.is_valid() and NewRegion.config is None:
                 wx.EndBusyCursor()
                 dlg = wx.MessageDialog(
                     self,
                     "There isn't any config.bmp",
                     "Warning while loading region",
-                    wx.OK | wx.ICON_INFORMATION
+                    wx.OK | wx.ICON_INFORMATION,
                     # wx.YES_NO | wx.NO_DEFAULT | wx.CANCEL | wx.ICON_INFORMATION
                 )
                 dlg.ShowModal()
@@ -1825,9 +1825,9 @@ class OverViewCanvas(wx.ScrolledWindow):
                 for _ in range(self.parent.zoomLevel):
                     offX = self.offX - 1
                     deletes = []
-                    for city in self.parent.region.allCities:
+                    for city in self.parent.region.all_cities:
                         if city.xPos + offX < 0:
-                            deletes.append((city.cityXPos, city.cityYPos))
+                            deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offX = offX
                 self.UpdateDrawing()
@@ -1837,9 +1837,9 @@ class OverViewCanvas(wx.ScrolledWindow):
                 for _ in range(self.parent.zoomLevel):
                     offX = self.offX + 1
                     deletes = []
-                    for city in self.parent.region.allCities:
+                    for city in self.parent.region.all_cities:
                         if city.xPos + city.xSize + offX > self.parent.region.imgSize[0]:
-                            deletes.append((city.cityXPos, city.cityYPos))
+                            deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offX = offX
                 self.UpdateDrawing()
@@ -1849,9 +1849,9 @@ class OverViewCanvas(wx.ScrolledWindow):
                 for _ in range(self.parent.zoomLevel):
                     offY = self.offY - 1
                     deletes = []
-                    for city in self.parent.region.allCities:
+                    for city in self.parent.region.all_cities:
                         if city.yPos + offY < 0:
-                            deletes.append((city.cityXPos, city.cityYPos))
+                            deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offY = offY
                 self.UpdateDrawing()
@@ -1861,9 +1861,9 @@ class OverViewCanvas(wx.ScrolledWindow):
                 for _ in range(self.parent.zoomLevel):
                     offY = self.offY + 1
                     deletes = []
-                    for city in self.parent.region.allCities:
+                    for city in self.parent.region.all_cities:
                         if city.yPos + city.ySize + offY > self.parent.region.imgSize[1]:
-                            deletes.append((city.cityXPos, city.cityYPos))
+                            deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offY = offY
                 self.UpdateDrawing()
@@ -1908,7 +1908,7 @@ class OverViewCanvas(wx.ScrolledWindow):
         event.Skip()
 
     def UpdateDrawing(self, pos=None, newSize=None, finish=True):
-        lightDir = rgnReader.Normalize((1, -5, -1))
+        lightDir = rgnReader.normalize((1, -5, -1))
         size = self.ClientSize
         if newSize:
             size = newSize
@@ -2091,15 +2091,15 @@ class OverViewCanvas(wx.ScrolledWindow):
             wx.Colour(0, 0, 255),
         ]
         sizes = [0, 64, 128, 0, 256]
-        for city in region.allCities:
+        for city in region.all_cities:
             x = int(city.xPos / zoomLevel)
             y = int(city.yPos / zoomLevel)
-            width = sizes[city.cityXSize] / zoomLevel
-            height = sizes[city.cityYSize] / zoomLevel
+            width = sizes[city.city_x_size] / zoomLevel
+            height = sizes[city.city_y_size] / zoomLevel
             dc.SetPen(wx.Pen("WHITE"))
             dc.SetBrush(wx.Brush("WHITE", wx.TRANSPARENT))
-            dc.SetPen(wx.Pen(colours[city.cityXSize]))
-            dc.SetBrush(wx.Brush(colours[city.cityXSize], wx.TRANSPARENT))
+            dc.SetPen(wx.Pen(colours[city.city_x_size]))
+            dc.SetBrush(wx.Brush(colours[city.city_x_size], wx.TRANSPARENT))
             self.DrawRectangle(dc, x - xO, y - yO, width, height)
             self.DrawRectangle(dc, x - xO + 1, y - yO + 1, width - 2, height - 2)
 
@@ -2123,19 +2123,19 @@ class OverViewCanvas(wx.ScrolledWindow):
             0,
             wx.Colour(0, 0, 255),
         ]
-        for city in region.allCities:
+        for city in region.all_cities:
             if (
-                pos[0] >= city.cityXPos
-                and pos[0] < city.cityXPos + city.cityXSize
-                and pos[1] >= city.cityYPos
-                and pos[1] < city.cityYPos + city.cityYSize
+                pos[0] >= city.city_x_position
+                and pos[0] < city.city_x_position + city.city_x_size
+                and pos[1] >= city.city_y_position
+                and pos[1] < city.city_y_position + city.city_y_size
             ):
                 x = int(city.xPos / zoomLevel)
                 y = int(city.yPos / zoomLevel)
                 width = int(city.xSize / zoomLevel)
                 height = int(city.ySize / zoomLevel)
-                dc.SetPen(wx.Pen(colours[city.cityXSize]))
-                dc.SetBrush(wx.Brush(colours[city.cityXSize], wx.CROSSDIAG_HATCH))
+                dc.SetPen(wx.Pen(colours[city.city_x_size]))
+                dc.SetBrush(wx.Brush(colours[city.city_x_size], wx.CROSSDIAG_HATCH))
                 self.DrawRectangle(dc, x + 1 - xO, y + 1 - yO, width - 2, height - 2)
                 self.DrawRectangle(dc, x - xO, y - yO, width, height)
                 self.DrawRectangle(dc, x - xO - 1, y - 1 - yO, width + 2, height + 2)

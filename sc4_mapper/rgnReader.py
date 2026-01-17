@@ -3,6 +3,7 @@ import os.path
 import struct
 import sys
 import time
+from enum import Enum
 
 # FIXME: SHHHH no no no
 from math import sqrt
@@ -16,10 +17,9 @@ import tools3D
 import wx
 from PIL import Image, ImageDraw
 
-from enum import Enum
 # import BmpImagePlugin
 from sc4_mapper import utils
-from sc4_mapper.GradientReader import GradientReader
+from sc4_mapper.gradient_reader import GradientReader
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def cached_listdir(path):
     return res
 
 
-def Normalize(p1):
+def normalize(p1):
     dx = float(p1[0])
     dy = float(p1[1])
     dz = float(p1[2])
@@ -60,8 +60,9 @@ def Normalize(p1):
         return (0, 0, 0)
 
 
-def ComputeOneRGB(bLight, height, waterLevel, region):
-    lightDir = Normalize((1, -5, -1))
+# TODO: this is not used
+def compute_one_rgb(bLight, height, waterLevel, region):
+    lightDir = normalize((1, -5, -1))
     rawRGB = tools3D.onePassColors(
         bLight,
         height.shape,
@@ -78,9 +79,16 @@ def ComputeOneRGB(bLight, height, waterLevel, region):
 
 class TGIenum(Enum):
     heights = (0xA9DD6FF4, 0xE98F9525, 0x00000001)
+    terrain = (0xA9DD6FF4, 0xE98F9525, 0x00000001)
 
 
-class SC4Entry(object):
+class CitySize(Enum):
+    SMALL = 1
+    MEDIUM = 2
+    LARGE = 4
+
+
+class SC4Entry:
     def __init__(self, buffer, idx):
         self.compressed = False
         logger.debug(f"{buffer} - {len(buffer)}")
@@ -88,7 +96,8 @@ class SC4Entry(object):
         # FIXME: this is broken atm
         # t, g, i, self.fileLocation, self.filesize = struct.unpack("3Lll", buffer)
         t, g, i, self.fileLocation, self.filesize = struct.unpack("3iii", buffer)
-        self.TGI = {"t": hex(t), "g": g, "i": i}
+        logger.debug(f"{t}, {g}, {i}, {self.fileLocation}, {self.filesize}")
+        self.TGI = {"t": t, "g": g, "i": i}
         self.initialFileLocation = self.fileLocation
         self.order = idx
         logger.debug(f"{self.TGI} -- {self.fileLocation}, {self.filesize}")
@@ -127,13 +136,13 @@ class SC4Entry(object):
         return tgi[0] == self.TGI["t"] and tgi[1] == self.TGI["g"] and tgi[2] == self.TGI["i"]
 
     def GetDWORD(self, pos):
-        return struct.unpack("I", self.content[pos : pos + 4])[0]
+        return struct.unpack("i", self.content[pos : pos + 4])[0]
 
     def GetString(self, pos, length):
         return self.content[pos : pos + length]
 
 
-class SaveFile(object):
+class SaveFile:
     """Class to be able to create a SC4 save file to hold city information, starting from a blank city"""
 
     def __init__(self, fileName):
@@ -142,34 +151,36 @@ class SaveFile(object):
         # FIXME: whyyyy whyyy... with openme
         self.sc4 = open(self.fileName, "rb")
         self.ReadHeader()
-        self.ReadEntries()
+        self.read_entries()
 
     def ReadHeader(self):
         """read the SC4 DBPF header"""
         self.header = self.sc4.read(96)
         # FIXME: py2 badddas
-        self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
+        # self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
+        self.header = self.header[0:0x30] + bytes(12) + self.header[0x30 + 12 : 96]
         raw = struct.unpack("4s17i24s", self.header)
+        self.fileVersionMajor = raw[1]
+        self.fileVersionMinor = raw[2]
+        self.dateCreated = raw[3]
+        self.dateUpdated = raw[4]
+
+        self.indexRecordType = raw[8]
         self.indexRecordEntryCount = raw[9]
         self.indexRecordPosition = raw[10]
         self.indexRecordLength = raw[11]
         self.holeRecordEntryCount = raw[12]
         self.holeRecordPosition = raw[13]
         self.holeRecordLength = raw[14]
-        self.dateCreated = raw[3]
-        self.dateUpdated = raw[4]
-        self.fileVersionMajor = raw[1]
-        self.fileVersionMinor = raw[2]
-        self.indexRecordType = raw[8]
 
-    def ReadEntries(self):
+    def read_entries(self):
         """Create entries for writing them later"""
         self.entries = []
         self.sc4.seek(self.indexRecordPosition)
         header = self.sc4.read(self.indexRecordLength)
         for idx in range(self.indexRecordEntryCount):
             entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
-            
+
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI(
                 (0xCA027EDB, 0xCA027EE1, 0x00000000)
             ):
@@ -179,7 +190,7 @@ class SaveFile(object):
             self.entries.append(entry)
         self.sc4.close()
 
-    def Save(self, cityXPos, cityYPos, heightMap, saveName):
+    def Save(self, city_x_position, city_y_position, heightMap, saveName):
         """Save a city
         read all entries
         create a save file
@@ -251,8 +262,8 @@ class SaveFile(object):
                 v = self.dateUpdated
                 entry.content = (
                     entry.content[0:0x04]
-                    + struct.pack("I", cityXPos)
-                    + struct.pack("I", cityYPos)
+                    + struct.pack("I", city_x_position)
+                    + struct.pack("I", city_y_position)
                     + entry.content[0x0C:39]
                     + struct.pack("I", v)
                     + entry.content[39 + 4 :]
@@ -312,16 +323,16 @@ def Save(city, folder, color, waterLevel):
     mainPath = sys.path[0]
     # FIXME: this looks bad
     os.chdir(mainPath)
-    if city.cityXSize == 1:
+    if city.city_x_size == CitySize.SMALL.value:
         name = "City - Small.sc4"
-    if city.cityXSize == 2:
+    if city.city_x_size == CitySize.MEDIUM.value:
         name = "City - Medium.sc4"
-    if city.cityXSize == 4:
+    if city.city_x_size == CitySize.LARGE.value:
         name = "City - Large.sc4"
-    city.fileName = folder + "/" + "City - New city(%03d-%03d).sc4" % (city.cityXPos, city.cityYPos)
+    city.fileName = folder + "/" + "City - New city(%03d-%03d).sc4" % (city.city_x_position, city.city_y_position)
     BuildThumbnail(city, color, waterLevel)
     saved = SaveFile(name)
-    return saved.Save(city.cityXPos, city.cityYPos, city.heightMap, city.fileName)
+    return saved.Save(city.city_x_position, city.city_y_position, city.heightMap, city.fileName)
 
 
 def BuildThumbnail(city, colors, waterLevel):
@@ -343,81 +354,87 @@ def BuildThumbnail(city, colors, waterLevel):
     return
 
 
-class SC4File(object):
-    """A file representing a saved city on the regions folder"""
+class SC4City:
+    """SC4 city class"""
 
-    def __init__(self, fileName):
-        """the file is open here, and closed in ReadEntries"""
-        self.fileName = fileName
-        # FIXME: whyyyy whyyy... with openme
-        # self.sc4 = open(self.fileName, "rb")
-
-    def AtPos(self, x, y):
+    def check_position(self, x: int, y: int) -> bool:
         """check if the city is at a specific coordinate ( in config.bmp coordinate )"""
-        return x == self.cityXPos and y == self.cityYPos
+        return x == self.city_x_position and y == self.city_y_position
 
-    def Split(self):
+    def split(self):
         """spliting a city, only for medium or large city, divide the city in 4 smallers cities"""
-        if self.cityXSize == 1:
+        if self.city_x_size == 1:
+            logger.info("city is too small to split")
             return []
+
         return [
             CityProxy(
                 250,
-                self.cityXPos,
-                self.cityYPos,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
+                self.city_x_position,
+                self.city_y_position,
+                self.city_x_size / 2,
+                self.city_y_size / 2,
             ),
             CityProxy(
                 250,
-                self.cityXPos + self.cityXSize / 2,
-                self.cityYPos,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
+                self.city_x_position + self.city_x_size / 2,
+                self.city_y_position,
+                self.city_x_size / 2,
+                self.city_y_size / 2,
             ),
             CityProxy(
                 250,
-                self.cityXPos + self.cityXSize / 2,
-                self.cityYPos + self.cityYSize / 2,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
+                self.city_x_position + self.city_x_size / 2,
+                self.city_y_position + self.city_y_size / 2,
+                self.city_x_size / 2,
+                self.city_y_size / 2,
             ),
             CityProxy(
                 250,
-                self.cityXPos,
-                self.cityYPos + self.cityYSize / 2,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
+                self.city_x_position,
+                self.city_y_position + self.city_y_size / 2,
+                self.city_x_size / 2,
+                self.city_y_size / 2,
             ),
         ]
 
-    def ReadHeader(self):
+
+class SC4File(SC4City):
+    """A file representing a saved city on the regions folder"""
+
+    def __init__(self, fileName):
+        self.fileName = fileName
+
+    def read_header(self):
         with open(self.fileName, "rb") as sc4_file_obj:
             self.header = sc4_file_obj.read(96)
         # FIXME: thats some black magic at this hour... no idea...
         # self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
-        my_zeroes = bytes(0 for x in range(12))
-        self.header = self.header[0:0x30] + my_zeroes + self.header[0x30 + 12 : 96]
-
+        self.header = self.header[0:0x30] + bytes(12) + self.header[0x30 + 12 : 96]
         raw = struct.unpack("4s17i24s", self.header)
+        logger.debug(raw)
+
+        assert raw[0] == b"DBPF"
+
+        self.fileVersionMajor = raw[1]
+        self.fileVersionMinor = raw[2]
+        self.dateCreated = raw[3]
+        self.dateUpdated = raw[4]
+
+        self.indexRecordType = raw[8]
         self.indexRecordEntryCount = raw[9]
         self.indexRecordPosition = raw[10]
         self.indexRecordLength = raw[11]
         self.holeRecordEntryCount = raw[12]
         self.holeRecordPosition = raw[13]
         self.holeRecordLength = raw[14]
-        self.dateCreated = raw[3]
-        self.dateUpdated = raw[4]
-        self.fileVersionMajor = raw[1]
-        self.fileVersionMinor = raw[2]
-        self.indexRecordType = raw[8]
 
         logger.info(
             f"{os.path.split(self.fileName)[1]} {self.indexRecordPosition} "
-            f"{self.indexRecordEntryCount} {self.indexRecordLength}"
+            f"{self.indexRecordEntryCount} {self.indexRecordLength} "
         )
 
-    def ReadEntries(self):
+    def read_entries(self):
         """Read all entries, only a few are read deeply and only the height entry is kept"""
         self.entries = []
         with open(self.fileName, "rb") as sc4_file_obj:
@@ -440,18 +457,20 @@ class SC4File(object):
                 self.heightMapEntry = entry
 
             if entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
-                logger.info("This was the city info", entry.compressed)
+                logger.info(f"This was the city info: {entry.compressed}")
                 # FIXME:?????
                 logger.info(f"version {hex(entry.GetDWORD(0x00))}")
                 version = entry.GetDWORD(0x00)
-                self.cityXPos = entry.GetDWORD(0x04)
-                self.cityYPos = entry.GetDWORD(0x08)
-                self.cityXSize = entry.GetDWORD(0x0C)
-                self.cityYSize = entry.GetDWORD(0x10)
-                logger.info("city tile X = ", self.cityXPos)
-                logger.info("city tile Y = ", self.cityYPos)
-                logger.info("city size X = ", self.cityXSize)
-                logger.info("city size Y = ", self.cityYSize)
+                self.city_x_position = entry.GetDWORD(0x04)
+                self.city_y_position = entry.GetDWORD(0x08)
+                self.city_x_size = entry.GetDWORD(0x0C)
+                self.city_y_size = entry.GetDWORD(0x10)
+                logger.info(
+                    f"\ncity tile X = {self.city_x_position} "
+                    f"city tile Y = {self.city_y_position}"
+                    f"\ncity size X = {self.city_x_size} "
+                    f"city size Y = {self.city_y_size}"
+                )
                 offsetLen = 64
                 if version == 0xD0001:
                     offsetLen = 64
@@ -460,98 +479,59 @@ class SC4File(object):
                 if version == 0x90001:
                     offsetLen = 59
                 sizeName = entry.GetDWORD(offsetLen)
-                logger.info("name city length", sizeName)
+                logger.info(f"name city length={sizeName}")
                 if sizeName < 100:
                     self.cityName = entry.GetString(offsetLen + 4, sizeName)
                     logger.info(self.cityName)
                 else:
-                    logger.info("xxxxxxxxxxxxxxxxxxxxoldv", version)
+                    logger.info(f"xxxxxxxxxxxxxxxxxxxxoldv {version}")
                     self.cityName = "weird name"
         logger.info("finished reading the sc4")
         logger.info("--" * 20)
 
         # FIXME: above can exit without actual size
-        self.ySize = self.cityYSize * 64 + 1
-        self.xSize = self.cityXSize * 64 + 1
-        self.xPos = self.cityXPos * 64
-        self.yPos = self.cityYPos * 64
+        self.ySize = self.city_y_size * 64 + 1
+        self.xSize = self.city_x_size * 64 + 1
+        self.xPos = self.city_x_position * 64
+        self.yPos = self.city_y_position * 64
         header = None
 
 
-class CityProxy(object):
+class CityProxy(SC4City):
     """A proxy for an empty city"""
 
     def __init__(self, waterLevel, xPos, yPos, xSize, ySize):
-        self.cityXPos = xPos
-        self.cityYPos = yPos
-        self.cityXSize = xSize
-        self.cityYSize = ySize
+        self.city_x_position = xPos
+        self.city_y_position = yPos
+        self.city_x_size = xSize
+        self.city_y_size = ySize
         self.cityName = "Not created yet"
-        self.ySize = self.cityYSize * 64 + 1
-        self.xSize = self.cityXSize * 64 + 1
-        self.xPos = self.cityXPos * 64
-        self.yPos = self.cityYPos * 64
+        self.ySize = self.city_y_size * 64 + 1
+        self.xSize = self.city_x_size * 64 + 1
+        self.xPos = self.city_x_position * 64
+        self.yPos = self.city_y_position * 64
         self.fileName = None
-
-    def AtPos(self, x, y):
-        """check if the city is at a specific coordinate ( in config.bmp coordinate )"""
-        return x == self.cityXPos and y == self.cityYPos
-
-    def Split(self):
-        """spliting a city, only for medium or large city, divide the city in 4 smallers cities"""
-        if self.cityXSize == 1:
-            return []
-        return [
-            CityProxy(
-                250,
-                self.cityXPos,
-                self.cityYPos,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
-            ),
-            CityProxy(
-                250,
-                self.cityXPos + self.cityXSize / 2,
-                self.cityYPos,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
-            ),
-            CityProxy(
-                250,
-                self.cityXPos + self.cityXSize / 2,
-                self.cityYPos + self.cityYSize / 2,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
-            ),
-            CityProxy(
-                250,
-                self.cityXPos,
-                self.cityYPos + self.cityYSize / 2,
-                self.cityXSize / 2,
-                self.cityYSize / 2,
-            ),
-        ]
 
 
 def parse_config(config, waterLevel):
     """Read the config.bmp, verify it, and create the city proxies for it"""
     verified = Numeric.zeros(config.size, Numeric.int8)
 
-    def Redish(value):
+    def redish(value):
         """True for small city"""
         (r, g, b) = value
         if r > g and r > b and r > 250:
             return True
         return False
 
-    def Greenish(value):
+    def greenish(value):
         """True for medium city"""
         (r, g, b) = value
         if g > r and g > b and g > 250:
             return True
         return False
 
-    def Blueish(value):
+    def blueish(value):
         """True for big city"""
         (r, g, b) = value
         if b > r and b > g and b > 250:
@@ -566,7 +546,7 @@ def parse_config(config, waterLevel):
             config.getpixel((x + 1, y + 1)),
         )
         for rgb in rgbs:
-            if not Greenish(rgb):
+            if not greenish(rgb):
                 assert 0
         verified[x, y] = 1
         verified[x + 1, y] = 1
@@ -593,7 +573,7 @@ def parse_config(config, waterLevel):
             config.getpixel((x + 3, y + 3)),
         )
         for rgb in rgbs:
-            if not Blueish(rgb):
+            if not blueish(rgb):
                 assert 0
         for j in range(4):
             for i in range(4):
@@ -609,7 +589,7 @@ def parse_config(config, waterLevel):
         for x in range(config.size[0]):
             if verified[x, y] == 0:
                 rgb = config.getpixel((x, y))
-                if Blueish(rgb):
+                if blueish(rgb):
                     try:
                         VerifyLarge(x, y)
                         bigs.append((x, y))
@@ -617,7 +597,7 @@ def parse_config(config, waterLevel):
                     except Exception as exc:
                         logger.warning(f"{x}, {y} not blue: {exc}")
                         raise
-                if Greenish(rgb):
+                if greenish(rgb):
                     try:
                         VerifyMedium(x, y)
                         mediums.append((x, y))
@@ -625,7 +605,7 @@ def parse_config(config, waterLevel):
                     except Exception as exc:
                         logger.warning(f"{x}, {y} not green: {exc}")
                         raise
-                if Redish(rgb):
+                if redish(rgb):
                     smalls.append((x, y))
                     small += 1
 
@@ -668,59 +648,47 @@ def BuildBestConfig(configSize):
     return im
 
 
-class SC4Region(object):
+class SC4Region:
     "a SC4 region, contains cities, layout and height map"
 
     def __init__(self, folder, waterLevel, dlg, config=None):
         self.waterLevel = waterLevel
+        self.folder = folder
+        self.dlg = dlg
+
+        self.all_cities = []
+        self.all_city_file_names = []
+        self.original_config = None
+
         if config is not None:
             self.folder = None
-            allCityFileNames = []
             self.config = config
-        else:
-            self.folder = folder
-            allfiles = cached_listdir(folder)
-            logger.debug(allfiles)
-            allCityFileNames = [x for x in allfiles if os.path.splitext(x)[1] == ".sc4"]
-            try:
-                config_file_name = utils.encodeFilename(os.path.join(folder, "config.bmp"))
-                config_file_name = os.path.join(folder, "config.bmp")
-                logger.debug(f"{config_file_name} - {type(config_file_name)}")
-                # self.config = Image.open(config_file_name)
-                config_file_name = "/app/region_tests/San Francisco/config.bmp"
-                with open(config_file_name, "rb") as bmp_temp:
-                    self.config = Image.open(bmp_temp).copy()
-            except Exception as exc:
-                logger.exception(exc)
-                self.config = None
-                raise
-        self.allCities = []
-
-        if self.config:
             self.config = self.config.convert("RGB")
-            self.originalConfig = self.config.copy()
-            self.allCities = parse_config(self.config, waterLevel)
+            self.original_config = self.config.copy()
+            self.all_cities = parse_config(self.config, waterLevel)
         else:
-            self.originalConfig = None
+            self._init_config()
 
-        # Verify saves vs config
-        for save in allCityFileNames:
-            if dlg is not None:
-                dlg.Update(1, "Please wait while loading the region" + "\nReading " + save)
-            sc4 = SC4File(os.path.join(folder, save))
-            sc4.ReadHeader()
-            sc4.ReadEntries()
-            for i, city in enumerate(self.allCities):
-                if city.AtPos(sc4.cityXPos, sc4.cityYPos):
+    def _compare_saves_vs_config(self):
+        """Verify saves vs config"""
+        for save in self.all_city_file_names:
+            if self.dlg is not None:
+                self.dlg.Update(1, "Please wait while loading the region" + "\nReading " + save)
+            sc4 = SC4File(os.path.join(self.folder, save))
+            sc4.read_header()
+            sc4.read_entries()
+            for i, city in enumerate(self.all_cities):
+                if city.check_position(sc4.city_x_position, sc4.city_y_position):
                     if (
-                        city.__class__ == CityProxy
-                        and city.cityXPos == sc4.cityXPos
-                        and city.cityYPos == sc4.cityYPos
-                        and city.cityXSize == sc4.cityXSize
-                        and city.cityYSize == sc4.cityYSize
+                        isinstance(city, CityProxy)
+                        and city.city_x_position == sc4.city_x_position
+                        and city.city_y_position == sc4.city_y_position
+                        and city.city_x_size == sc4.city_x_size
+                        and city.city_y_size == sc4.city_y_size
                     ):
-                        self.allCities = self.allCities[:i] + self.allCities[i + 1 :]
+                        self.all_cities = self.all_cities[:i] + self.all_cities[i + 1 :]
                     else:
+                        # FIXME: move to ui module
                         dlg1 = wx.MessageDialog(
                             None,
                             "It seems that the config.bmp does not match the savegames present in the region folder",
@@ -729,27 +697,46 @@ class SC4Region(object):
                         )
                         dlg1.ShowModal()
                         dlg1.Destroy()
-                        self.allCities = None
+                        self.all_cities = None
                         return
-            self.allCities.append(sc4)
-        self.config = self.BuildConfig()
-        self.originalConfig = self.BuildConfig()
-        if dlg is not None:
-            dlg.Update(1, "Please wait while loading the region")
+            self.all_cities.append(sc4)
 
-    def CropConfig(self):
+        self.config = self.BuildConfig()
+        self.original_config = self.BuildConfig()
+
+        if self.dlg:
+            self.dlg.Update(1, "Please wait while loading the region")
+
+    def _init_config(self):
+        all_files = cached_listdir(self.folder)
+        logger.debug(all_files)
+        self.all_city_file_names = [x for x in all_files if os.path.splitext(x)[1] == ".sc4"]
+        try:
+            config_file_name = utils.encodeFilename(os.path.join(self.folder, "config.bmp"))
+            config_file_name = os.path.join(self.folder, "config.bmp")
+            logger.debug(f"{config_file_name} - {type(config_file_name)}")
+            # self.config = Image.open(config_file_name)
+            # config_file_name = "/app/region_tests/San Francisco/config.bmp"
+            with open(config_file_name, "rb") as bmp_temp:
+                self.config = Image.open(bmp_temp).copy()
+        except Exception as exc:
+            logger.exception(exc)
+            self.config = None
+            raise
+
+    def crop_config(self):
         "find the bbox of valid cities and return the new resized config"
         sizeX = sizeY = 0
         minX = minY = maxX = maxY = None
-        for city in self.allCities:
-            if minX is None or city.cityXPos < minX:
-                minX = city.cityXPos
-            if minY is None or city.cityYPos < minY:
-                minY = city.cityYPos
-            if maxX is None or city.cityXPos + city.cityXSize > maxX:
-                maxX = city.cityXPos + city.cityXSize
-            if maxY is None or city.cityYPos + city.cityYSize > maxY:
-                maxY = city.cityYPos + city.cityYSize
+        for city in self.all_cities:
+            if minX is None or city.city_x_position < minX:
+                minX = city.city_x_position
+            if minY is None or city.city_y_position < minY:
+                minY = city.city_y_position
+            if maxX is None or city.city_x_position + city.city_x_size > maxX:
+                maxX = city.city_x_position + city.city_x_size
+            if maxY is None or city.city_y_position + city.city_y_size > maxY:
+                maxY = city.city_y_position + city.city_y_size
         sizeX = maxX - minX
         sizeY = maxY - minY
         config = self.config.crop((minX, minY, maxX, maxY))
@@ -762,20 +749,20 @@ class SC4Region(object):
         bigs = []
         smalls = []
         mediums = []
-        for city in self.allCities:
-            if city.cityXSize == 4:
-                bigs.append((city.cityXPos, city.cityYPos))
-            if city.cityXSize == 2:
-                mediums.append((city.cityXPos, city.cityYPos))
-            if city.cityXSize == 1:
-                smalls.append((city.cityXPos, city.cityYPos))
-            if city.cityXPos + city.cityXSize > sizeX:
-                sizeX = city.cityXPos + city.cityXSize
-            if city.cityYPos + city.cityYSize > sizeY:
-                sizeY = city.cityYPos + city.cityYSize
-        if self.originalConfig:
-            sizeX = self.originalConfig.size[0]
-            sizeY = self.originalConfig.size[1]
+        for city in self.all_cities:
+            if city.city_x_size == 4:
+                bigs.append((city.city_x_position, city.city_y_position))
+            if city.city_x_size == 2:
+                mediums.append((city.city_x_position, city.city_y_position))
+            if city.city_x_size == 1:
+                smalls.append((city.city_x_position, city.city_y_position))
+            if city.city_x_position + city.city_x_size > sizeX:
+                sizeX = city.city_x_position + city.city_x_size
+            if city.city_y_position + city.city_y_size > sizeY:
+                sizeY = city.city_y_position + city.city_y_size
+        if self.original_config:
+            sizeX = self.original_config.size[0]
+            sizeY = self.original_config.size[1]
         config = Image.new("RGB", (sizeX, sizeY))
         draw = ImageDraw.Draw(config)
         for c in smalls:
@@ -816,24 +803,24 @@ class SC4Region(object):
 
     def DeleteCityAt(self, pos):
         "find the city at a certain x,y and remove it"
-        for i, city in enumerate(self.allCities):
+        for i, city in enumerate(self.all_cities):
             if (
-                pos[0] >= city.cityXPos
-                and pos[0] < city.cityXPos + city.cityXSize
-                and pos[1] >= city.cityYPos
-                and pos[1] < city.cityYPos + city.cityYSize
+                pos[0] >= city.city_x_position
+                and pos[0] < city.city_x_position + city.city_x_size
+                and pos[1] >= city.city_y_position
+                and pos[1] < city.city_y_position + city.city_y_size
             ):
-                self.allCities = self.allCities[:i] + self.allCities[i + 1 :]
+                self.all_cities = self.all_cities[:i] + self.all_cities[i + 1 :]
                 break
 
     def GetCityUnder(self, pos):
         "find the city at a certain x,y"
-        for city in self.allCities:
+        for city in self.all_cities:
             if (
-                pos[0] >= city.cityXPos
-                and pos[0] < city.cityXPos + city.cityXSize
-                and pos[1] >= city.cityYPos
-                and pos[1] < city.cityYPos + city.cityYSize
+                pos[0] >= city.city_x_position
+                and pos[0] < city.city_x_position + city.city_x_size
+                and pos[1] >= city.city_y_position
+                and pos[1] < city.city_y_position + city.city_y_size
             ):
                 return city
         return None
@@ -841,7 +828,7 @@ class SC4Region(object):
     def GetCitiesUnder(self, pos, size):
         "find all cities under rect"
         cities = []
-        for city in self.allCities:
+        for city in self.all_cities:
 
             def collide(x1, y1, w1, h1, x2, y2, w2, h2):
                 return not (x1 >= x2 + w2 or x1 + w1 <= x2 or y1 >= y2 + h2 or y1 + h1 <= y2)
@@ -851,35 +838,35 @@ class SC4Region(object):
                 pos[1],
                 size,
                 size,
-                city.cityXPos,
-                city.cityYPos,
-                city.cityXSize,
-                city.cityYSize,
+                city.city_x_position,
+                city.city_y_position,
+                city.city_x_size,
+                city.city_y_size,
             ):
                 cities.append(city)
         return cities
 
-    def IsValid(self):
+    def is_valid(self):
         "the region is valid if there is at least one city or the config.bmp is ok"
-        return len(self.allCities) > 0 or self.config is not None
+        return len(self.all_cities) > 0 or self.config is not None
 
     def Save(self, dlg, minX, minY, subRgn):
         "save the region to SC4File"
         logger.info("saving")
         saved = True
-        for i, city in enumerate(self.allCities):
+        for i, city in enumerate(self.all_cities):
             dlg.Update(
                 i,
                 "Please wait while saving the region"
                 + "\nSaving "
-                + " City - New city(%03d-%03d).sc4" % (city.cityXPos, city.cityYPos),
+                + " City - New city(%03d-%03d).sc4" % (city.city_x_position, city.city_y_position),
             )
             citySave = CityProxy(
                 self.waterLevel,
-                city.cityXPos - minX,
-                city.cityYPos - minY,
-                city.cityXSize,
-                city.cityYSize,
+                city.city_x_position - minX,
+                city.city_y_position - minY,
+                city.city_x_size,
+                city.city_y_size,
             )
             citySave.heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
             citySave.heightMap[::, ::] = self.height[
@@ -901,7 +888,7 @@ class SC4Region(object):
                 "to",
                 citySave.xPos + subRgn[0] + citySave.xSize,
             )
-            lightDir = Normalize((1, -5, -1))
+            lightDir = normalize((1, -5, -1))
             rawRGB = tools3D.onePassColors(
                 False,
                 citySave.heightMap.shape,
@@ -920,8 +907,8 @@ class SC4Region(object):
                 logger.debug(
                     (
                         "problem while saving:\n"
-                        f"{citySave.fileName} {city.cityXPos}, {city.cityYPos}"
-                        f"{city.cityXSize}, {city.cityYSize}"
+                        f"{citySave.fileName} {city.city_x_position}, {city.city_y_position}"
+                        f"{city.city_x_size}, {city.city_y_size}"
                     )
                 )
                 saved = False
@@ -934,20 +921,24 @@ class SC4Region(object):
         if self.config:
             imgSize[0] = self.config.size[0]
             imgSize[1] = self.config.size[1]
-        for city in self.allCities:
-            x = city.cityXPos + city.cityXSize
-            y = city.cityYPos + city.cityYSize
+
+        for city in self.all_cities:
+            x = city.city_x_position + city.city_x_size
+            y = city.city_y_position + city.city_y_size
             if imgSize[0] < x:
                 imgSize[0] = x
             if imgSize[1] < y:
                 imgSize[1] = y
+
         self.imgSize = [a * 64 + 1 for a in imgSize]
         self.shape = [self.imgSize[1], self.imgSize[0]]
+
         if readFiles is False:
             return
+
         dlg.Update(2, "Please wait while loading the region\nBuilding textures")
         self.height = Numeric.zeros(self.shape, Numeric.uint16)
-        for city in self.allCities:
+        for city in self.all_cities:
             if hasattr(city, "heightMapEntry"):
                 self.height[
                     city.yPos : city.yPos + city.ySize,
@@ -970,4 +961,3 @@ class SC4Region(object):
             city.height = None
         dlg.Update(2, "Please wait while loading the region\nBuilding textures")
         logger.info("region read")
-        return

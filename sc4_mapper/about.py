@@ -1,6 +1,7 @@
 """
 This implement the about box by using html window and the about box when displaying the 'coppyrigh' in SC4M files
 """
+
 import logging
 import webbrowser
 
