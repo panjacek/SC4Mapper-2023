@@ -17,17 +17,17 @@ import tools3D
 import wx
 from PIL import Image, ImageDraw
 
-# import BmpImagePlugin
+from sc4_mapper import base_dir, utils
 from sc4_mapper.gradient_reader import GradientReader
 
 logger = logging.getLogger(__name__)
 
-Image._initialized = 2
+# Image._initialized = 2
 generic_saveValue = 3
 COMPRESSED_SIG = 0xFB10
 
 # FIXME: hacky hacks
-GRADIENT_READER = GradientReader("static/basicColors.ini")
+GRADIENT_READER = GradientReader(os.path.join(base_dir, "static", "basicColors.ini"))
 
 # FIXME: thats hack for missing dircache... not sure its needed
 global_cache = {}

@@ -35,6 +35,5 @@ RUN make -C Modules && \
 # Set environment
 ENV PYTHONPATH=/app:/opt/libs
 ENV DISPLAY=:0
-
 # Default command to run the app
 ENTRYPOINT ["python3", "-m", "sc4_mapper.SC4MapApp"]
