@@ -9,7 +9,6 @@ def test_tools3d():
 
 class TestMainWindow:
     @pytest.fixture(scope="function")
-    @pytest.mark.usefixtures("mocker")
     def sc4_app_obj(self, mocker):
         init_mock = mocker.patch("sc4_mapper.SC4MapApp.SC4App.OnInit")
         sc4_app = SC4App(False)
