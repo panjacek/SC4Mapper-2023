@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from sc4_mapper.rgnReader import CitySize, SC4Entry, SC4File, SC4Region
+from sc4_mapper.rgnReader import CitySize, SC4File, SC4Region
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +43,33 @@ class TestSC4File:
         sc4_file.city_x_size = CitySize.SMALL.value
         assert sc4_file.split() == []
 
-    @pytest.mark.skip("TODO")
     def test_split_large(self, sc4_file_example_path):
         sc4_file = SC4File(sc4_file_example_path)
         sc4_file.city_x_size = CitySize.LARGE.value
-        assert sc4_file.split() == []
+        sc4_file.city_y_size = CitySize.LARGE.value
+        sc4_file.city_x_position = 0
+        sc4_file.city_y_position = 0
 
-    @pytest.mark.skip("TODO")
+        splitted = sc4_file.split()
+        assert len(splitted) == 4
+        assert splitted[0].city_x_size == 2
+        assert splitted[0].city_x_position == 0
+        assert splitted[1].city_x_position == 2
+        assert splitted[2].city_y_position == 2
+
     def test_split_medium(self, sc4_file_example_path):
         sc4_file = SC4File(sc4_file_example_path)
-        sc4_file.city_x_size = CitySize.SMALL.value
-        assert sc4_file.split() == []
+        sc4_file.city_x_size = CitySize.MEDIUM.value
+        sc4_file.city_y_size = CitySize.MEDIUM.value
+        sc4_file.city_x_position = 10
+        sc4_file.city_y_position = 10
+
+        splitted = sc4_file.split()
+        assert len(splitted) == 4
+        assert splitted[0].city_x_size == 1
+        assert splitted[0].city_x_position == 10
+        assert splitted[1].city_x_position == 11
+        assert splitted[2].city_y_position == 11
 
     # TODO: expand
     def test_read_header(self, sc4_file_example_path):
@@ -61,7 +77,7 @@ class TestSC4File:
         sc4_file.read_header()
         assert sc4_file.indexRecordEntryCount == 116
 
-    def test_read_entries_loop(self, sc4_file_example_path, mocker):
+    def test_read_entries(self, sc4_file_example_path, mocker):
         sc4_entry_mock = mocker.patch("sc4_mapper.rgnReader.SC4Entry")
         sc4_entry_mock().GetDWORD.return_value = 100
         sc4_file = SC4File(sc4_file_example_path)
@@ -70,14 +86,14 @@ class TestSC4File:
 
         assert sc4_entry_mock.call_count == 1 + sc4_file.indexRecordEntryCount
 
-    def test_read_entries_version_offset(self, sc4_file_example_path, mocker):
-        sc4_entry_mock = mocker.patch("sc4_mapper.rgnReader.SC4Entry")
-        sc4_entry_mock().GetDWORD.return_value = 100
-        sc4_file = SC4File(sc4_file_example_path)
-        sc4_file.read_header()
-        sc4_file.read_entries()
 
-        assert sc4_entry_mock.call_count == 1 + sc4_file.indexRecordEntryCount
+def test_save_invalid_size(mocker):
+    from sc4_mapper.rgnReader import Save
+
+    city = mocker.MagicMock()
+    city.city_x_size = 99
+    with pytest.raises(ValueError, match="Invalid city size: 99"):
+        Save(city, "some_folder", [], 250)
 
 
 class TestSC4Region:

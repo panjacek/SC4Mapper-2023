@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+
 import wx
 import wx.adv
 
@@ -106,9 +107,7 @@ class OverView(wx.Frame):
         boxh.Add(self.btnExportRgn, 0)
         boxh.Add(self.btnSave, 0)
         boxh.Add(
-            wx.StaticLine(
-                self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL
-            ),
+            wx.StaticLine(self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL),
             0,
             wx.EXPAND | wx.RIGHT | wx.LEFT,
             5,
@@ -118,9 +117,7 @@ class OverView(wx.Frame):
         boxh.Add(self.btnZoomOut, 0, wx.ALIGN_CENTER_VERTICAL)
         boxh.Add(self.overlayCbx, 0, wx.ALIGN_CENTER_VERTICAL)
         boxh.Add(
-            wx.StaticLine(
-                self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL
-            ),
+            wx.StaticLine(self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_VERTICAL),
             0,
             wx.EXPAND | wx.RIGHT | wx.LEFT,
             5,
@@ -166,9 +163,7 @@ class OverView(wx.Frame):
         sys.exit(0)
 
     def RevertConfig(self, event):
-        self.region.all_cities = rgnReader.parse_config(
-            self.region.originalConfig, 250.0
-        )
+        self.region.all_cities = rgnReader.parse_config(self.region.original_config, 250.0)
         self.region.config = self.region.BuildConfig()
         self.editMode = EDITMODE_NONE
         self.btnSmall.SetValue(False)
@@ -306,9 +301,7 @@ class OverView(wx.Frame):
                 pass
             elif self.editMode == EDITMODE_NONE:
                 if event.Dragging() and self.back.crop is not None:
-                    newpos = self.back.CalcUnscrolledPosition(
-                        event.GetX(), event.GetY()
-                    )
+                    newpos = self.back.CalcUnscrolledPosition(event.GetX(), event.GetY())
                     newpos = [newpos[0] * self.zoomLevel, newpos[1] * self.zoomLevel]
                     newpos = [newpos[0] - self.back.offX, newpos[1] - self.back.offY]
                     newpos = [newpos[0] / 64, newpos[1] / 64]
@@ -361,37 +354,21 @@ class OverView(wx.Frame):
                     origin[1] = self.region.imgSize[1] - size
                     newpos[1] = (origin[1] - self.back.offY) / 64
 
-                if (
-                    origin[0] >= 0
-                    and origin[1] >= 0
-                    and origin[0] + size <= self.region.imgSize[0]
-                    and origin[1] + size <= self.region.imgSize[1]
-                ):
-                    self.back.HighlightNewCity(
-                        self.zoomLevel, self.region, newpos, sizes[self.editMode]
-                    )
+                if origin[0] >= 0 and origin[1] >= 0 and origin[0] + size <= self.region.imgSize[0] and origin[1] + size <= self.region.imgSize[1]:
+                    self.back.HighlightNewCity(self.zoomLevel, self.region, newpos, sizes[self.editMode])
 
                 self.back.wait = True
                 self.back.Refresh(False)
 
     def OnLeftDown(self, event):
-        if (
-            self.btnEditMode.GetValue()
-            and self.editMode == EDITMODE_NONE
-            and event.ControlDown()
-        ):
+        if self.btnEditMode.GetValue() and self.editMode == EDITMODE_NONE and event.ControlDown():
             newpos = self.back.CalcUnscrolledPosition(event.GetX(), event.GetY())
             newpos = [newpos[0] * self.zoomLevel, newpos[1] * self.zoomLevel]
             newpos = [newpos[0] - self.back.offX, newpos[1] - self.back.offY]
             newpos = [newpos[0] / 64, newpos[1] / 64]
             origin = [newpos[0] * 64 + self.back.offX, newpos[1] * 64 + self.back.offY]
             size = 64 + 1
-            if (
-                origin[0] >= 0
-                and origin[1] >= 0
-                and origin[0] + size <= self.region.imgSize[0]
-                and origin[1] + size <= self.region.imgSize[1]
-            ):
+            if origin[0] >= 0 and origin[1] >= 0 and origin[0] + size <= self.region.imgSize[0] and origin[1] + size <= self.region.imgSize[1]:
                 self.back.crop = [newpos[0], newpos[1], newpos[0], newpos[1]]
 
     def OnLeftUp(self, event):
@@ -416,9 +393,7 @@ class OverView(wx.Frame):
                         (0, 0, self.region.config.size[0], self.region.config.size[1]),
                     )
                     self.region.config.paste(config, (int(crop[0]), int(crop[1])))
-                    self.region.all_cities = rgnReader.parse_config(
-                        self.region.config, self.region.waterLevel
-                    )
+                    self.region.all_cities = rgnReader.parse_config(self.region.config, self.region.waterLevel)
                     self.region.config = self.region.BuildConfig()
                 self.back.crop = None
             elif self.editMode == EDITMODE_VOID:
@@ -437,12 +412,7 @@ class OverView(wx.Frame):
                     origin[1] = self.region.imgSize[1] - size
                     newpos[1] = (origin[1] - self.back.offY) / 64
 
-                if (
-                    origin[0] >= 0
-                    and origin[1] >= 0
-                    and origin[0] + size <= self.region.imgSize[0]
-                    and origin[1] + size <= self.region.imgSize[1]
-                ):
+                if origin[0] >= 0 and origin[1] >= 0 and origin[0] + size <= self.region.imgSize[0] and origin[1] + size <= self.region.imgSize[1]:
                     currentSize = sizes[self.editMode]
                     done = False
                     logger.info("start split")
@@ -459,11 +429,7 @@ class OverView(wx.Frame):
                                 for c in newCities:
                                     self.region.all_cities.append(c)
                     logger.info("end split")
-                    self.region.all_cities.append(
-                        rgnReader.CityProxy(
-                            250.0, newpos[0], newpos[1], currentSize, currentSize
-                        )
-                    )
+                    self.region.all_cities.append(rgnReader.CityProxy(250.0, newpos[0], newpos[1], currentSize, currentSize))
             logger.info("start build")
             self.region.config = self.region.BuildConfig()
             logger.info("end build")

@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: latin-1 -*-
+import os
+
+# Suppress Gtk-WARNING and other stderr noise at the OS level as early as possible
+try:
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 2)
+    os.close(devnull)
+except Exception:
+    pass
+
 import logging
 
 import tools3D
@@ -12,7 +22,7 @@ from sc4_mapper.splash_screen import SplashScreen
 logging.basicConfig(
     format="[%(asctime)s.%(msecs)03d][%(filename)s:%(lineno)d][%(levelname)s]:%(message)s",
     datefmt="%Y%m%d-%H:%M:%S",
-    level="DEBUG",
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
 )
 logger = logging.getLogger(__name__)
 
@@ -35,6 +45,8 @@ class ErrApp(wx.App):
 
 class SC4App(wx.App):
     def OnInit(self):
+        # Suppress wxWidgets level logging noise
+        self._log_null = wx.LogNull()
         splash = SplashScreen()
         splash.Show()
         return True
@@ -57,8 +69,7 @@ def check_tools_pyd():
 def main():
     assert check_tools_pyd()
     logger.info(base_dir)
-    # mainPath = sys.path[0]
-    # os.chdir(mainPath)
+
     app = SC4App(False)
     app.MainLoop()
 

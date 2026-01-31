@@ -1,5 +1,3 @@
-import webbrowser
-
 import pytest
 import wx
 

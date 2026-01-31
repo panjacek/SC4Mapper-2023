@@ -1,16 +1,27 @@
 import logging
 import os
+import struct
+import zlib
+
 import numpy as Numeric
 import tools3D
 import wx
 from PIL import Image, ImageDraw
+
 from sc4_mapper import (
     MAPPER_VERSION,
     QuestionDialog,
     base_dir,
     rgnReader,
 )
-from sc4_mapper.region_from_file import CreateRgnFromFile, SC4MfileHandler
+from sc4_mapper.helpers import cached_listdir
+from sc4_mapper.region_from_file import (
+    CreateRgnFromFile,
+    SC4MfileHandler,
+    SC4MfileHandlerGrey,
+    SC4MfileHandlerPNG,
+    SC4MfileHandlerRGB,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +36,7 @@ class RegionHandler:
             message="Save file as ...",
             defaultDir=os.getcwd(),
             defaultFile="",
-            wildcard="PNG file (*.png)|*.png|"
-            "Jpeg file (*.jpg)|*.jpg|"
-            "Bitmap file (*.bmp)|*.bmp",
+            wildcard="PNG file (*.png)|*.png|Jpeg file (*.jpg)|*.jpg|Bitmap file (*.bmp)|*.bmp",
             style=wx.FD_SAVE,
         )
         if dlg.ShowModal() == wx.ID_OK:
@@ -43,16 +52,12 @@ class RegionHandler:
             dlgProg = wx.ProgressDialog(
                 "Saving overview",
                 "Please wait while saving overview",
-                maximum=len(self.frame.region.all_cities)
-                + len(self.frame.region.missingCities)
-                + 10,
+                maximum=len(self.frame.region.all_cities) + len(self.frame.region.missingCities) + 10,
                 parent=self.frame,
                 style=0,
             )
 
-            im = Image.new(
-                "RGB", (self.frame.region.imgSize[0], self.frame.region.imgSize[1])
-            )
+            im = Image.new("RGB", (self.frame.region.imgSize[0], self.frame.region.imgSize[1]))
             for i, city in enumerate(self.frame.region.all_cities):
                 dlgProg.Update(i, "Please wait while saving overview")
                 x = int(city.xPos)
@@ -65,9 +70,7 @@ class RegionHandler:
                 y2 = y1 + height
 
                 h = Numeric.zeros((height, width), Numeric.uint16)
-                h[:, :] = Numeric.reshape(
-                    self.frame.region.height[y1:y2, x1:x2], (height, width)
-                )
+                h[:, :] = Numeric.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
                 h = h.astype(Numeric.float32)
                 h /= Numeric.array(10).astype(Numeric.float32)
                 rawRGB = tools3D.onePassColors(
@@ -94,9 +97,7 @@ class RegionHandler:
                     x2 = x1 + width
                     y2 = y1 + height
                     h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(
-                        self.frame.region.height[y1:y2, x1:x2], (height, width)
-                    )
+                    h[:, :] = Numeric.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
                     h = h.astype(Numeric.float32)
                     h /= Numeric.array(10).astype(Numeric.float32)
                     rawRGB = tools3D.onePassColors(
@@ -109,11 +110,7 @@ class RegionHandler:
                         lightDir,
                     )
                     del h
-                    imCity = (
-                        Image.frombytes("RGB", (width, height), rawRGB)
-                        .convert("L")
-                        .convert("RGB")
-                    )
+                    imCity = Image.frombytes("RGB", (width, height), rawRGB).convert("L").convert("RGB")
                     del rawRGB
                     im.paste(imCity, (x1, y1))
                     del imCity
@@ -158,7 +155,7 @@ class RegionHandler:
                         [
                             0 - xO,
                             y * 64 - yO,
-                            self.frame.region.originalConfig.size[0] * 64 - xO,
+                            self.frame.region.original_config.size[0] * 64 - xO,
                             y * 64 - yO,
                         ]
                     )
@@ -168,7 +165,7 @@ class RegionHandler:
                             x * 64 - xO,
                             0 - yO,
                             x * 64 - xO,
-                            self.frame.region.originalConfig.size[1] * 64 - yO,
+                            self.frame.region.original_config.size[1] * 64 - yO,
                         ]
                     )
                 for x1, y1, x2, y2 in lines:
@@ -218,9 +215,7 @@ class RegionHandler:
                     if width <= 0 or height <= 0:
                         continue
                     h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(
-                        self.frame.region.height[y1:y2, x1:x2], (height, width)
-                    )
+                    h[:, :] = Numeric.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
                     h = h.astype(Numeric.float32)
                     h /= Numeric.array(10).astype(Numeric.float32)
                     rawRGB = tools3D.onePassColors(
@@ -232,11 +227,7 @@ class RegionHandler:
                         rgnReader.GRADIENT_READER.paletteLand,
                         lightDir,
                     )
-                    imCity = (
-                        Image.frombytes("RGB", (width, height), rawRGB)
-                        .convert("L")
-                        .convert("RGB")
-                    )
+                    imCity = Image.frombytes("RGB", (width, height), rawRGB).convert("L").convert("RGB")
                     del rawRGB
                     im.paste(imCity, (x1, y1))
                     del imCity
@@ -279,13 +270,13 @@ class RegionHandler:
         self.frame.zoomLevel = 1
         self.frame.zoomLevelPow = 0
 
-        self.frame.SetTitle("NHP SC4Mapper %s Version " % MAPPER_VERSION)
+        self.frame.SetTitle(f"NHP SC4Mapper {MAPPER_VERSION} Version ")
 
     def CreateRgnOk(self, regionName):
         self.frame.btnSave.Enable(True)
         self.frame.btnSaveRgn.Enable(True)
         self.frame.btnExportRgn.Enable(True)
-        self.frame.SetTitle("NHP SC4Mapper %s Version - " % MAPPER_VERSION + regionName)
+        self.frame.SetTitle(f"NHP SC4Mapper {MAPPER_VERSION} Version - {regionName}")
         self.frame.btnZoomIn.Enable(False)
         self.frame.btnZoomOut.Enable(True)
 
@@ -295,7 +286,7 @@ class RegionHandler:
             message="Choose a file",
             defaultDir=os.getcwd(),
             defaultFile="",
-            wildcard="SC4M file (*.sc4m)|*.sc4m",
+            wildcard="SC4M file (*.sc4m;*.SC4M)|*.sc4m;*.SC4M",
             style=wx.FD_OPEN,
         )
         if dlg.ShowModal() == wx.ID_OK:
@@ -327,7 +318,6 @@ class RegionHandler:
         )
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
-            from sc4_mapper.region_from_file import SC4MfileHandlerGrey
 
             self.CreateRgnInit()
             self.frame.regionName = os.path.splitext(os.path.basename(path))[0]
@@ -356,7 +346,6 @@ class RegionHandler:
         )
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
-            from sc4_mapper.region_from_file import SC4MfileHandlerPNG
 
             self.CreateRgnInit()
             self.frame.regionName = os.path.splitext(os.path.basename(path))[0]
@@ -385,7 +374,6 @@ class RegionHandler:
         )
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
-            from sc4_mapper.region_from_file import SC4MfileHandlerRGB
 
             self.CreateRgnInit()
             self.frame.regionName = os.path.splitext(os.path.basename(path))[0]
@@ -439,27 +427,15 @@ class RegionHandler:
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            red = (
-                (heightMap / Numeric.array(4096, Numeric.uint16))
-                % Numeric.array(16, Numeric.uint16)
-            ) * Numeric.array(16, Numeric.uint16)
+            red = ((heightMap / Numeric.array(4096, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)) * Numeric.array(16, Numeric.uint16)
             red = red.astype(Numeric.uint8)
-            imRed = Image.frombytes(
-                "L", (heightMap.shape[1], heightMap.shape[0]), red.tobytes()
-            )
-            green = (
-                (heightMap / Numeric.array(256, Numeric.uint16))
-                % Numeric.array(16, Numeric.uint16)
-            ) * Numeric.array(16, Numeric.uint16)
+            imRed = Image.frombytes("L", (heightMap.shape[1], heightMap.shape[0]), red.tobytes())
+            green = ((heightMap / Numeric.array(256, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)) * Numeric.array(16, Numeric.uint16)
             green = green.astype(Numeric.uint8)
-            imGreen = Image.frombytes(
-                "L", (heightMap.shape[1], heightMap.shape[0]), green.tobytes()
-            )
+            imGreen = Image.frombytes("L", (heightMap.shape[1], heightMap.shape[0]), green.tobytes())
             blue = heightMap % Numeric.array(256, Numeric.uint16)
             blue = blue.astype(Numeric.uint8)
-            imBlue = Image.frombytes(
-                "L", (heightMap.shape[1], heightMap.shape[0]), blue.tobytes()
-            )
+            imBlue = Image.frombytes("L", (heightMap.shape[1], heightMap.shape[0]), blue.tobytes())
             imCity = Image.merge("RGB", (imRed, imGreen, imBlue))
             im.paste(imCity, (citySave.xPos, citySave.yPos))
         dlgProg.Close()
@@ -524,9 +500,7 @@ class RegionHandler:
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
             heightMap = heightMap.astype(Numeric.int32)
-            imCity = Image.frombytes(
-                "I", (heightMap.shape[1], heightMap.shape[0]), heightMap.tobytes()
-            )
+            imCity = Image.frombytes("I", (heightMap.shape[1], heightMap.shape[0]), heightMap.tobytes())
             im.paste(imCity, (citySave.xPos, citySave.yPos))
         dlgProg.Close()
         dlgProg.Destroy()
@@ -564,9 +538,6 @@ class RegionHandler:
         dlg1.Destroy()
 
     def ExportAsSC4M(self, path, config, minX, minY, subRgn):
-        import struct
-        import zlib
-
         if os.path.isfile(path):
             dlg = wx.MessageDialog(
                 self.frame,
@@ -619,9 +590,7 @@ class RegionHandler:
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
             heightMap = heightMap.astype(Numeric.int32)
-            imCity = Image.frombytes(
-                "RGBA", (heightMap.shape[1], heightMap.shape[0]), heightMap.tobytes()
-            )
+            imCity = Image.frombytes("RGBA", (heightMap.shape[1], heightMap.shape[0]), heightMap.tobytes())
             imCity1, imCity2 = imCity.split()[:2]
             im1.paste(imCity1, (citySave.xPos, citySave.yPos))
             im2.paste(imCity2, (citySave.xPos, citySave.yPos))
@@ -673,17 +642,14 @@ class RegionHandler:
             message="Export region as ...",
             defaultDir=base_dir,
             defaultFile=self.frame.regionName,
-            wildcard="SC4 Terrain files (*.SC4M)|*.SC4M"
-            "|16bit png files (*.png)|*.png|RGB files (*.bmp)|*.bmp",
+            wildcard="SC4 Terrain files (*.SC4M;*.sc4m)|*.SC4M;*.sc4m|16bit png files (*.png)|*.png|RGB files (*.bmp)|*.bmp",
             style=wx.FD_SAVE,
         )
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
             dlg.Destroy()
             ext = os.path.splitext(path)[1].upper()
-            minX, minY, maxX, maxY, sizeX, sizeY, config = (
-                self.frame.region.CropConfig()
-            )
+            minX, minY, maxX, maxY, sizeX, sizeY, config = self.frame.region.crop_config()
             subRgn = [
                 minX * 64 + self.frame.back.offX,
                 minY * 64 + self.frame.back.offY,
@@ -703,22 +669,19 @@ class RegionHandler:
         self.frame.Refresh(False)
 
     def SaveRgn(self, event):
-        from sc4_mapper.helpers import cached_listdir
-
-        dlg = wx.TextEntryDialog(
+        dlg = wx.DirDialog(
             self.frame,
-            "Enter the name of the new region",
-            "Region name",
-            self.frame.regionName,
+            "Choose or create a directory for the region:",
+            defaultPath=self.frame.mydocs,
+            style=wx.DD_DEFAULT_STYLE | wx.DD_NEW_DIR_BUTTON,
         )
         if dlg.ShowModal() == wx.ID_OK:
-            name = dlg.GetValue()
+            path = dlg.GetPath()
+            name = os.path.basename(path)
             dlg.Destroy()
         else:
             dlg.Destroy()
             return None
-
-        path = os.path.join(self.frame.mydocs, name)
 
         try:
             os.makedirs(path)
@@ -741,18 +704,13 @@ class RegionHandler:
                 try:
                     allfiles = cached_listdir(path)
                     valid = [".SC4", ".INI", ".BMP", ".PNG"]
-                    allfiles = [
-                        f for f in allfiles if os.path.splitext(f)[1].upper() in valid
-                    ]
+                    allfiles = [f for f in allfiles if os.path.splitext(f)[1].upper() in valid]
                     for fname in allfiles:
                         os.unlink(os.path.join(path, fname))
                 except OSError:
                     dlg = wx.MessageDialog(
                         self.frame,
-                        (
-                            "A problem has occured while cleaning the region folder\n"
-                            "You may try to clean it yourself"
-                        ),
+                        ("A problem has occured while cleaning the region folder\nYou may try to clean it yourself"),
                         "Error while saving region",
                         wx.OK | wx.ICON_ERROR,
                     )
@@ -762,10 +720,7 @@ class RegionHandler:
             else:
                 dlg = wx.MessageDialog(
                     self.frame,
-                    (
-                        "A problem has occured while creating the region folder\n"
-                        "You should enter a valid folder name as region name"
-                    ),
+                    ("A problem has occured while creating the region folder\nYou should enter a valid folder name as region name"),
                     "Error while saving region",
                     wx.OK | wx.ICON_ERROR,
                 )
@@ -782,7 +737,7 @@ class RegionHandler:
             parent=self.frame,
             style=0,
         )
-        minX, minY, maxX, maxY, sizeX, sizeY, config = self.frame.region.CropConfig()
+        minX, minY, maxX, maxY, sizeX, sizeY, config = self.frame.region.crop_config()
         subRgn = [
             minX * 64 + self.frame.back.offX,
             minY * 64 + self.frame.back.offY,
@@ -801,10 +756,7 @@ class RegionHandler:
         if saved is False:
             dlg = wx.MessageDialog(
                 self.frame,
-                (
-                    "A problem has occured while saving the cities files\n"
-                    "Some or all of the cities might not have been saved correctly"
-                ),
+                ("A problem has occured while saving the cities files\nSome or all of the cities might not have been saved correctly"),
                 "Error while saving region",
                 wx.OK | wx.ICON_ERROR,
             )
@@ -812,6 +764,7 @@ class RegionHandler:
             dlg.Destroy()
             return
         self.frame.regionName = name
+        self.frame.SetTitle(f"NHP SC4Mapper {MAPPER_VERSION} Version - {name}")
 
     def OpenRgn(self, event):
         self.frame.btnEditMode.Enable(False)
@@ -837,14 +790,30 @@ class RegionHandler:
         self.frame.zoomLevel = 1
         self.frame.zoomLevelPow = 0
         self.frame.btnEditMode.Enable(True)
-        self.frame.back.SetVirtualSize(
-            (self.frame.region.height.shape[1], self.frame.region.height.shape[0])
-        )
+        self.frame.back.SetVirtualSize((self.frame.region.height.shape[1], self.frame.region.height.shape[0]))
 
         self.frame.SetFocus()
-        self.frame.SetTitle(
-            "NHP SC4Mapper %s Version - " % MAPPER_VERSION + self.frame.regionName
-        )
+        self.frame.SetTitle(f"NHP SC4Mapper {MAPPER_VERSION} Version - {self.frame.regionName}")
+        self.frame.Layout()
+        self.frame.Refresh()
+        self.frame.Update()
+
+        # Give wx time to process layout events
+        wx.SafeYield()
+
+        logger.info(f"Frame ClientSize: {self.frame.GetClientSize()}")
+        logger.info(f"Canvas (back) Size: {self.frame.back.GetSize()}")
+        logger.info(f"Canvas (back) ClientSize: {self.frame.back.GetClientSize()}")
+
+        # Force a reasonable size if it looks broken (1,1 is commonly a 'not sized yet' placeholder)
+        if self.frame.back.GetClientSize() == (1, 1):
+            logger.warning("Canvas size is (1,1), attempting to force resize based on Frame size")
+            # Estimate toolbar height ~100px? Just a heuristic fallback
+            w, h = self.frame.GetClientSize()
+            self.frame.back.SetSize((w, h - 50))
+            wx.SafeYield()
+            logger.info(f"Canvas (back) ClientSize after force: {self.frame.back.GetClientSize()}")
+
         self.frame.back.OnSize(None)
 
     def LoadARegion(self):

@@ -7,7 +7,8 @@ import wx.adv
 import wx.lib.masked as masked
 from PIL import Image
 
-from sc4_mapper import about, base_dir, zipUtils
+from sc4_mapper import about, base_dir, rgnReader, zipUtils
+from sc4_mapper.rgnReader import SC4Region
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +18,16 @@ class SC4MfileHandler:
         self.file_name = file_name
 
     def read(self):
+        config = None
         with open(self.file_name, "rb") as raw:
             zipped = zipUtils.ZipInputStream(raw)
             s = zipped.read(4).decode()
             if s != "SC4M":
                 logger.warning(f"{s} != SC4M")
-                raise IOError("SC4M")
+                raise OSError("SC4M")
             version = struct.unpack("i", zipped.read(4))[0]
             if version != 0x0200:
-                raise IOError("Version")
+                raise OSError("Version")
             ySize = struct.unpack("i", zipped.read(4))[0]
             xSize = struct.unpack("i", zipped.read(4))[0]
             # FIXME: looks like redundant
@@ -75,9 +77,9 @@ class SC4MfileHandler:
                 logger.info(f"config: {temp}")
             if temp != "SC4D":
                 logger.warning(temp)
-                raise IOError("SC4D")
-            r = Numeric.fromstring(zipped.read(xSize * ySize), Numeric.uint8)
-            rH = Numeric.fromstring(zipped.read(xSize * ySize), Numeric.uint8)
+                raise OSError("SC4D")
+            r = Numeric.frombuffer(zipped.read(xSize * ySize), Numeric.uint8)
+            rH = Numeric.frombuffer(zipped.read(xSize * ySize), Numeric.uint8)
             zipped = None
         r = r.astype(Numeric.uint16)
         rH = rH.astype(Numeric.uint16)
@@ -88,7 +90,50 @@ class SC4MfileHandler:
         return r, config
 
 
-class CreateRgnFromFile(wx.Dialog):
+class SC4MfileHandlerGrey:
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+    def read(self):
+        with Image.open(self.file_name) as im:
+            if im.mode != "L":
+                im = im.convert("L")
+            data = Numeric.array(im, dtype=Numeric.uint16)
+            return data.flatten()
+
+
+class SC4MfileHandlerPNG:
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+    def read(self):
+        with Image.open(self.file_name) as im:
+            # PNG 16-bit grayscale can be "I;16" or "I"
+            if im.mode not in ("I;16", "I"):
+                logger.warning(f"Unexpected PNG mode {im.mode}, converting to 16-bit")
+                im = im.convert("I")
+            data = Numeric.array(im, dtype=Numeric.uint16)
+            return data.flatten()
+
+
+class SC4MfileHandlerRGB:
+    def __init__(self, file_name):
+        self.file_name = file_name
+
+    def read(self):
+        with Image.open(self.file_name) as im:
+            if im.mode != "RGB":
+                im = im.convert("RGB")
+            data = Numeric.array(im, dtype=Numeric.uint16)
+            # Encoding: H = ((Red >> 4) << 12) | ((Green >> 4) << 8) | Blue
+            red = data[:, :, 0]
+            green = data[:, :, 1]
+            blue = data[:, :, 2]
+            height = (((red >> 4) << 12) | ((green >> 4) << 8) | blue).astype(Numeric.uint16)
+            return height.flatten()
+
+
+class CreateRgnFromFileDialog(wx.Dialog):
     """Dialog for entering region setting ( file , size , name, config.bmp )"""
 
     def __init__(self, parent, title, wildCard, bAllowScale=False):
@@ -97,12 +142,12 @@ class CreateRgnFromFile(wx.Dialog):
         self.SetExtraStyle(wx.FRAME_EX_CONTEXTHELP)
         self.Create(parent, -1, title)
 
-        labelFileName = wx.StaticText(self, -1, "Filename")
-        self.fileName = wx.TextCtrl(self, -1, "", style=wx.TE_READONLY)
-        browseFile = wx.Button(self, -1, "...", size=(20, -1))
+        labelFileName = wx.StaticText(self, -1, "Filename:")
+        self.fileName = wx.TextCtrl(self, -1, "", size=(300, -1), style=wx.TE_READONLY)
+        browseFile = wx.Button(self, -1, "...", size=(40, -1))
         if bAllowScale:
             label = wx.StaticText(self, -1, "Scale factor:")
-            self.imageFactor = wx.ComboBox(self, -1, "Default factor", style=wx.CB_DROPDOWN)
+            self.imageFactor = wx.ComboBox(self, -1, "Default factor", size=(150, -1), style=wx.CB_DROPDOWN)
             scaleTable = [
                 "100m",
                 "250m",
@@ -122,49 +167,54 @@ class CreateRgnFromFile(wx.Dialog):
             for s in scaleTable:
                 self.imageFactor.Append(s)
         self.fromConfig = wx.RadioButton(self, -1, "Config.bmp", style=wx.RB_GROUP)
-        self.configFileName = wx.TextCtrl(self, -1, "", style=wx.TE_READONLY)
-        browseConfig = wx.Button(self, -1, "...", size=(20, -1))
-        self.fromSize = wx.RadioButton(self, -1, "Specify size")
-        self.sizeX = masked.NumCtrl(self, value=8, integerWidth=3, allowNegative=False, min=2)
-        self.sizeY = masked.NumCtrl(self, value=8, integerWidth=3, allowNegative=False, min=2)
+        self.configFileName = wx.TextCtrl(self, -1, "", size=(200, -1), style=wx.TE_READONLY)
+        browseConfig = wx.Button(self, -1, "...", size=(40, -1))
+        self.fromSize = wx.RadioButton(self, -1, "Specify size (tiles):")
+        self.sizeX = masked.NumCtrl(self, value=8, integerWidth=4, allowNegative=False, min=2, size=(60, -1))
+        self.sizeY = masked.NumCtrl(self, value=8, integerWidth=4, allowNegative=False, min=2, size=(60, -1))
         sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Filename row
         box = wx.BoxSizer(wx.HORIZONTAL)
-        box.Add(labelFileName, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        # FIXME: EXPAND assertion Error
-        # box.Add(self.fileName, 0, wx.ALIGN_CENTRE | wx.EXPAND | wx.ALL, 5)
-        box.Add(self.fileName, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        box.Add(browseFile, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        sizer.Add(box, 0, wx.GROW | wx.ALL, 5)
+        box.Add(labelFileName, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        box.Add(self.fileName, 1, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        box.Add(browseFile, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        sizer.Add(box, 0, wx.EXPAND)
+
         if bAllowScale:
+            # Scale factor row
             box = wx.BoxSizer(wx.HORIZONTAL)
-            box.Add(label, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-            # FIXME: EXPAND assertion Error
-            # box.Add(self.imageFactor, 0, wx.ALIGN_CENTRE | wx.EXPAND | wx.ALL, 5)
-            box.Add(self.imageFactor, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-            sizer.Add(box, 0, wx.GROW | wx.ALL, 5)
+            box.Add(label, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+            box.Add(self.imageFactor, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+            sizer.Add(box, 0, wx.EXPAND)
+
+        # Config row
         box = wx.BoxSizer(wx.HORIZONTAL)
-        box.Add(self.fromConfig, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        # FIXME: EXPAND assertion Error
-        # box.Add(self.configFileName, 0, wx.ALIGN_CENTRE | wx.EXPAND | wx.ALL, 5)
-        box.Add(self.configFileName, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        box.Add(browseConfig, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        sizer.Add(box, 0, wx.GROW | wx.ALL, 5)
+        box.Add(self.fromConfig, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        box.Add(self.configFileName, 1, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        box.Add(browseConfig, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        sizer.Add(box, 0, wx.EXPAND)
+
+        # Size row
         box = wx.BoxSizer(wx.HORIZONTAL)
-        box.Add(self.fromSize, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        box.Add(self.sizeX, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        box.Add(self.sizeY, 0, wx.ALIGN_CENTRE | wx.ALL, 5)
-        sizer.Add(box, 0, wx.GROW | wx.ALL, 5)
+        box.Add(self.fromSize, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        box.Add(self.sizeX, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        box.Add(wx.StaticText(self, -1, "x"), 0, wx.ALIGN_CENTRE_VERTICAL)
+        box.Add(self.sizeY, 0, wx.ALIGN_CENTRE_VERTICAL | wx.ALL, 10)
+        sizer.Add(box, 0, wx.EXPAND)
         line = wx.StaticLine(self, -1, size=(20, -1), style=wx.LI_HORIZONTAL)
         sizer.Add(line, 0, wx.GROW | wx.ALL, 5)
         btnsizer = wx.StdDialogButtonSizer()
-        self.btnOk = wx.Button(self, wx.ID_OK)
+        self.btnOk = wx.Button(self, wx.ID_OK, size=(80, -1))
         self.btnOk.SetDefault()
         btnsizer.AddButton(self.btnOk)
-        btn = wx.Button(self, wx.ID_CANCEL)
+        btn = wx.Button(self, wx.ID_CANCEL, size=(80, -1))
         btnsizer.AddButton(btn)
         btnsizer.Realize()
-        sizer.Add(btnsizer, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.ALL, 5)
+        sizer.Add(btnsizer, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.ALL, 10)
         self.SetSizer(sizer)
+        self.SetMinSize((500, 400))
+        self.Center()
         sizer.Fit(self)
         self.Bind(wx.EVT_BUTTON, self.OnBrowseFile, browseFile)
         self.Bind(wx.EVT_BUTTON, self.OnBrowseConfig, browseConfig)
@@ -282,3 +332,82 @@ class CreateRgnFromFile(wx.Dialog):
             self.sizeY.Enable(False)
             self.configFileName.Enable(True)
         dlg.Destroy()
+
+
+def CreateRgnFromFile(handler, frame):
+    config = None
+    r = None
+    scale = 1.0
+
+    if isinstance(handler, SC4MfileHandler):
+        r, config = handler.read()
+    else:
+        # Determine wildcard based on handler
+        wild = "*.*"
+        if isinstance(handler, SC4MfileHandlerGrey):
+            wild = "Image file (*.png;*.jpg;*.bmp)|*.png;*.jpg;*.bmp"
+        elif isinstance(handler, SC4MfileHandlerPNG):
+            wild = "PNG file (*.png)|*.png"
+        elif isinstance(handler, SC4MfileHandlerRGB):
+            wild = "Image file (*.png;*.jpg;*.bmp)|*.png;*.jpg;*.bmp"
+
+        dlg = CreateRgnFromFileDialog(frame, "Import parameters", wild, bAllowScale=True)
+        dlg.fileName.SetValue(handler.file_name)
+
+        # Try to guess size from image
+        try:
+            with Image.open(handler.file_name) as im:
+                x = (im.size[0] - 1) // 64
+                y = (im.size[1] - 1) // 64
+                dlg.sizeX.SetValue(x)
+                dlg.sizeY.SetValue(y)
+            dlg.btnOk.Enable(True)
+        except Exception as exc:
+            logger.warning(exc)
+
+        if dlg.ShowModal() == wx.ID_OK:
+            scale = dlg.GetImageFactor()
+            handler.file_name = dlg.fileName.GetValue()
+            r = handler.read()
+
+            if dlg.fromConfig.GetValue():
+                configPath = dlg.configFileName.GetValue()
+                with Image.open(configPath) as im_config:
+                    config = im_config.copy()
+            else:
+                x = int(dlg.sizeX.GetValue())
+                y = int(dlg.sizeY.GetValue())
+                config = rgnReader.BuildBestConfig((x, y))
+        else:
+            dlg.Destroy()
+            return None
+        dlg.Destroy()
+
+    if r is not None and config is not None:
+        if scale != 1.0:
+            r = (r.astype(Numeric.float32) * scale).astype(Numeric.uint16)
+
+        # Create the region
+        region = SC4Region(None, 250, None, config=config)
+
+        # Initialize the region view
+        region.show(None, readFiles=False)
+
+        # Assign the heightmap
+        try:
+            # Try to reshape. if it fails, the image might have wrong dimensions
+            if r.size != region.shape[0] * region.shape[1]:
+                logger.warning(f"Heightmap size {r.size} mismatch with region shape {region.shape}. Resizing.")
+                # This is a bit slow because we have to go back to Image
+                temp_im = Image.fromarray(r.reshape((-1, int(Numeric.sqrt(r.size)))) if Numeric.sqrt(r.size).is_integer() else r.reshape((1, -1)))
+                temp_im = temp_im.resize((region.imgSize[0], region.imgSize[1]), Image.Resampling.BILINEAR)
+                r = Numeric.array(temp_im, dtype=Numeric.uint16)
+
+            region.height = r.reshape(region.shape)
+        except Exception as e:
+            logger.error(f"Failed to assign heightmap: {e}")
+            return None
+
+        return region
+
+    return None

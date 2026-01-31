@@ -1,14 +1,18 @@
 FROM sc4mapper:latest
+USER root
 
 # Install test dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     xauth \
     dbus-x11 \
+    clang-format \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements-test.txt ./
 RUN pip3 install --break-system-packages --no-cache-dir -r requirements-test.txt
+
+USER sc4user
 
 # Run pytest by default with Xvfb and D-Bus
 ENV TERM=xterm-256color

@@ -22,18 +22,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
+# Create a non-root user
+RUN useradd -m -u 1000 sc4user
+
 WORKDIR /app
+RUN chown sc4user:sc4user /app
 
 # Copy source
-COPY . .
+COPY --chown=sc4user:sc4user . .
 
 # Build C extensions (QFS and tools3D)
+RUN mkdir -p /opt/libs && chown sc4user:sc4user /opt/libs
 RUN make -C Modules && \
-    mkdir -p /opt/libs && \
     cp Modules/*.so /opt/libs/
 
 # Set environment
 ENV PYTHONPATH=/app:/opt/libs
 ENV DISPLAY=:0
+
+USER sc4user
+
 # Default command to run the app
 ENTRYPOINT ["python3", "-m", "sc4_mapper.SC4MapApp"]

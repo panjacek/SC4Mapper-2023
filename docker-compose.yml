@@ -14,7 +14,5 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro
       - .:/app
-      - ./regions:/app/regions
     network_mode: host
-    privileged: true
     command: python3 -m sc4_mapper.SC4MapApp

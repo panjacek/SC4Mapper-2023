@@ -14,9 +14,7 @@ class SplashScreen(wx.adv.SplashScreen):
     def __init__(self):
         splash_image = os.path.join(base_dir, "static", "splash.jpg")
         bmp = wx.Image(splash_image, wx.BITMAP_TYPE_JPEG).ConvertToBitmap()
-        super().__init__(
-            bmp, wx.adv.SPLASH_CENTRE_ON_SCREEN | wx.adv.SPLASH_TIMEOUT, 1000, None, -1
-        )
+        super().__init__(bmp, wx.adv.SPLASH_CENTRE_ON_SCREEN | wx.adv.SPLASH_TIMEOUT, 1000, None, -1)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
 
     def OnClose(self, evt):
@@ -25,5 +23,5 @@ class SplashScreen(wx.adv.SplashScreen):
         self.ShowMain()
 
     def ShowMain(self):
-        frame = OverView(None, "NHP SC4Mapper %s Version" % MAPPER_VERSION, (100, 100))
+        frame = OverView(None, f"NHP SC4Mapper {MAPPER_VERSION} Version", (100, 100))
         frame.Show()

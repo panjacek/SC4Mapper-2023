@@ -6,7 +6,7 @@ Dialog to ask a model question, with coder-specified list of buttons.
 import wx
 
 
-class curry(object):
+class curry:
     """Taken from the Python Cookbook, this class provides an easy way to
     tie up a function with some default parameters and call it later.
     See http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/52549 for more.
@@ -26,7 +26,7 @@ class curry(object):
         return self.func(*(self.pending + args), **kw)
 
 
-class dropArgs(object):
+class dropArgs:
     """Same as curry, but once the function is built, further args are ignored."""
 
     def __init__(self, func, *args, **kwargs):
@@ -78,7 +78,9 @@ class ModalQuestion(wx.Dialog):
         self.Fit()
 
 
-def questionDialog(message, buttons=[wx.ID_OK, wx.ID_CANCEL], caption=""):
+def questionDialog(message, buttons=None, caption=""):
+    if buttons is None:
+        buttons = [wx.ID_OK, wx.ID_CANCEL]
     """Ask a question.
 
     Return value will be the button the user clicked, in whatever form it was specified.

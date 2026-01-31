@@ -1,8 +1,10 @@
 import logging
+
 import numpy as Numeric
 import tools3D
 import wx
-from sc4_mapper import SCROLL_RATE, EDITMODE_NONE, rgnReader
+
+from sc4_mapper import EDITMODE_NONE, SCROLL_RATE, rgnReader
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +57,7 @@ class OverViewCanvas(wx.ScrolledWindow):
                     offX = self.offX + 1
                     deletes = []
                     for city in self.parent.region.all_cities:
-                        if (
-                            city.xPos + city.xSize + offX
-                            > self.parent.region.imgSize[0]
-                        ):
+                        if city.xPos + city.xSize + offX > self.parent.region.imgSize[0]:
                             deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offX = offX
@@ -82,10 +81,7 @@ class OverViewCanvas(wx.ScrolledWindow):
                     offY = self.offY + 1
                     deletes = []
                     for city in self.parent.region.all_cities:
-                        if (
-                            city.yPos + city.ySize + offY
-                            > self.parent.region.imgSize[1]
-                        ):
+                        if city.yPos + city.ySize + offY > self.parent.region.imgSize[1]:
                             deletes.append((city.city_x_position, city.city_y_position))
                     if len(deletes) == 0:
                         self.offY = offY
@@ -101,9 +97,7 @@ class OverViewCanvas(wx.ScrolledWindow):
         if event:
             size = event.GetSize()
         if self.parent.region:
-            if self.buffer is None or (
-                self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]
-            ):
+            if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
                 self.buffer = wx.Bitmap(*size)
             self.UpdateDrawing(newSize=size)
         else:
@@ -115,10 +109,8 @@ class OverViewCanvas(wx.ScrolledWindow):
         size = self.ClientSize
         x, y = self.GetViewStart()
         if self.parent.region:
-            if self.buffer is None or (
-                self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]
-            ):
-                self.buffer = wx.EmptyBitmap(*size)
+            if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
+                self.buffer = wx.Bitmap(*size)
             wx.CallAfter(self.UpdateDrawing)
         else:
             self.buffer = None
@@ -130,6 +122,13 @@ class OverViewCanvas(wx.ScrolledWindow):
         if newSize:
             size = newSize
 
+        # Ensure buffer exists and is the correct size
+        if self.buffer is None or (self.buffer.GetWidth() != size[0] or self.buffer.GetHeight() != size[1]):
+            if size[0] > 0 and size[1] > 0:
+                self.buffer = wx.Bitmap(int(size[0]), int(size[1]))
+            else:
+                return
+
         if self.parent.zoomLevel == 1:
             sizeDest = (
                 min(size[0], self.parent.region.height.shape[1]),
@@ -138,16 +137,16 @@ class OverViewCanvas(wx.ScrolledWindow):
             sizeSource = sizeDest
         else:
             sizeDest = (
-                min(
-                    size[0], self.parent.region.height.shape[1] / self.parent.zoomLevel
+                int(
+                    size[0],
                 ),
-                min(
-                    size[1], self.parent.region.height.shape[0] / self.parent.zoomLevel
+                int(
+                    size[1],
                 ),
             )
             sizeSource = (
-                sizeDest[0] * self.parent.zoomLevel,
-                sizeDest[1] * self.parent.zoomLevel,
+                int(sizeDest[0] * self.parent.zoomLevel),
+                int(sizeDest[1] * self.parent.zoomLevel),
             )
         logger.info(f"{sizeDest} {sizeSource}")
         if pos:
@@ -160,14 +159,13 @@ class OverViewCanvas(wx.ScrolledWindow):
         y *= self.parent.zoomLevel
         logger.debug(f"Drawing from {x}, {y}")
         heightMap = Numeric.zeros((sizeDest[1], sizeDest[0]), Numeric.uint16)
-        try:
-            heightMap[::, ::] = self.parent.region.height[
-                y : y + sizeSource[1] : self.parent.zoomLevel,
-                x : x + sizeSource[0] : self.parent.zoomLevel,
-            ]
-        except ValueError:
-            wx.CallAfter(self.UpdateDrawing, None)
-            return
+        # Safe slicing to avoid ValueError on shape mismatch
+        source_slice = self.parent.region.height[
+            y : y + sizeSource[1] : self.parent.zoomLevel,
+            x : x + sizeSource[0] : self.parent.zoomLevel,
+        ]
+        h, w = source_slice.shape
+        heightMap[0:h, 0:w] = source_slice
         heightMap = heightMap.astype(Numeric.float32)
         heightMap /= Numeric.array(10).astype(Numeric.float32)
         rawRGB = tools3D.onePassColors(
@@ -179,43 +177,40 @@ class OverViewCanvas(wx.ScrolledWindow):
             rgnReader.GRADIENT_READER.paletteLand,
             lightDir,
         )
-        img = wx.EmptyImage(heightMap.shape[1], heightMap.shape[0])
+        img = wx.Image(heightMap.shape[1], heightMap.shape[0])
         img.SetData(rawRGB)
 
         dc = wx.BufferedDC(None, self.buffer)
-        dc.BeginDrawing()
         dc.SetBackground(wx.Brush("Light Gray"))
         dc.Clear()
-        dc.DrawBitmap(wx.BitmapFromImage(img), 0, 0, False)
+        dc.DrawBitmap(wx.Bitmap(img), 0, 0, False)
 
         dc.SetPen(wx.TRANSPARENT_PEN)
         dc.SetBrush(wx.Brush("Light Gray"))
         dc.SetLogicalFunction(wx.OR)
         dc.DrawRectangle(
-            0 - x / self.parent.zoomLevel,
-            0 - y / self.parent.zoomLevel,
-            self.offX / self.parent.zoomLevel,
-            self.parent.region.imgSize[1] / self.parent.zoomLevel,
+            int(0 - x / self.parent.zoomLevel),
+            int(0 - y / self.parent.zoomLevel),
+            int(self.offX / self.parent.zoomLevel),
+            int(self.parent.region.imgSize[1] / self.parent.zoomLevel),
         )
         dc.DrawRectangle(
-            0 - x / self.parent.zoomLevel,
-            0 - y / self.parent.zoomLevel,
-            self.parent.region.imgSize[0] / self.parent.zoomLevel,
-            self.offY / self.parent.zoomLevel,
+            int(0 - x / self.parent.zoomLevel),
+            int(0 - y / self.parent.zoomLevel),
+            int(self.parent.region.imgSize[0] / self.parent.zoomLevel),
+            int(self.offY / self.parent.zoomLevel),
         )
         dc.DrawRectangle(
-            (self.parent.region.imgSize[0] + self.offX) / self.parent.zoomLevel
-            - x / self.parent.zoomLevel,
-            0 - y / self.parent.zoomLevel,
-            -self.offX / self.parent.zoomLevel,
-            self.parent.region.imgSize[1] / self.parent.zoomLevel,
+            int((self.parent.region.imgSize[0] + self.offX) / self.parent.zoomLevel - x / self.parent.zoomLevel),
+            int(0 - y / self.parent.zoomLevel),
+            int(-self.offX / self.parent.zoomLevel),
+            int(self.parent.region.imgSize[1] / self.parent.zoomLevel),
         )
         dc.DrawRectangle(
-            0 - x / self.parent.zoomLevel,
-            (self.parent.region.imgSize[1] + self.offY) / self.parent.zoomLevel
-            - y / self.parent.zoomLevel,
-            self.parent.region.imgSize[0] / self.parent.zoomLevel,
-            -self.offY / self.parent.zoomLevel,
+            int(0 - x / self.parent.zoomLevel),
+            int((self.parent.region.imgSize[1] + self.offY) / self.parent.zoomLevel - y / self.parent.zoomLevel),
+            int(self.parent.region.imgSize[0] / self.parent.zoomLevel),
+            int(-self.offY / self.parent.zoomLevel),
         )
         dc.SetLogicalFunction(wx.COPY)
 
@@ -224,22 +219,22 @@ class OverViewCanvas(wx.ScrolledWindow):
                 dc,
                 self.parent.zoomLevel,
                 self.parent.region,
-                x / self.parent.zoomLevel,
-                y / self.parent.zoomLevel,
+                int(x / self.parent.zoomLevel),
+                int(y / self.parent.zoomLevel),
             )
             self.AddGrid(
                 dc,
                 self.parent.zoomLevel,
                 self.parent.region,
-                x / self.parent.zoomLevel,
-                y / self.parent.zoomLevel,
+                int(x / self.parent.zoomLevel),
+                int(y / self.parent.zoomLevel),
             )
             self.AddOverlay(
                 dc,
                 self.parent.zoomLevel,
                 self.parent.region,
-                x / self.parent.zoomLevel,
-                y / self.parent.zoomLevel,
+                int(x / self.parent.zoomLevel),
+                int(y / self.parent.zoomLevel),
             )
         if self.crop is not None:
             dc.SetPen(wx.TRANSPARENT_PEN)
@@ -253,14 +248,14 @@ class OverViewCanvas(wx.ScrolledWindow):
             ]
             self.DrawRectangle(
                 dc,
-                (crop[0] * 64 - x) / self.parent.zoomLevel,
-                (crop[1] * 64 - y) / self.parent.zoomLevel,
-                ((crop[2] - crop[0]) * 64 + 65) / self.parent.zoomLevel,
-                ((crop[3] - crop[1]) * 64 + 65) / self.parent.zoomLevel,
+                int((crop[0] * 64 - x) / self.parent.zoomLevel),
+                int((crop[1] * 64 - y) / self.parent.zoomLevel),
+                int(((crop[2] - crop[0]) * 64 + 65) / self.parent.zoomLevel),
+                int(((crop[3] - crop[1]) * 64 + 65) / self.parent.zoomLevel),
             )
             dc.SetLogicalFunction(wx.COPY)
         if finish:
-            dc.EndDrawing()
+            pass
         self.wait = True
         wx.CallAfter(self.Refresh, False)
         if finish is False:
@@ -274,7 +269,7 @@ class OverViewCanvas(wx.ScrolledWindow):
                 [
                     0 - xO,
                     y * int(64 / zoomLevel) - yO,
-                    region.originalConfig.size[0] * int(64 / zoomLevel) - xO,
+                    region.original_config.size[0] * int(64 / zoomLevel) - xO,
                     y * int(64 / zoomLevel) - yO,
                 ]
             )
@@ -284,17 +279,17 @@ class OverViewCanvas(wx.ScrolledWindow):
                     x * int(64 / zoomLevel) - xO,
                     0 - yO,
                     x * int(64 / zoomLevel) - xO,
-                    region.originalConfig.size[1] * int(64 / zoomLevel) - yO,
+                    region.original_config.size[1] * int(64 / zoomLevel) - yO,
                 ]
             )
         dc.SetPen(wx.Pen("Light Gray"))
         dc.DrawLineList(
             [
                 (
-                    x1 + self.offX / zoomLevel,
-                    y1 + self.offY / zoomLevel,
-                    x2 + self.offX / zoomLevel,
-                    y2 + self.offY / zoomLevel,
+                    int(x1 + self.offX / zoomLevel),
+                    int(y1 + self.offY / zoomLevel),
+                    int(x2 + self.offX / zoomLevel),
+                    int(y2 + self.offY / zoomLevel),
                 )
                 for x1, y1, x2, y2 in lines
             ]
@@ -315,8 +310,8 @@ class OverViewCanvas(wx.ScrolledWindow):
         for city in region.all_cities:
             x = int(city.xPos / zoomLevel)
             y = int(city.yPos / zoomLevel)
-            width = sizes[city.city_x_size] / zoomLevel
-            height = sizes[city.city_y_size] / zoomLevel
+            width = int(sizes[city.city_x_size] / zoomLevel)
+            height = int(sizes[city.city_y_size] / zoomLevel)
             dc.SetPen(wx.Pen("WHITE"))
             dc.SetBrush(wx.Brush("WHITE", wx.TRANSPARENT))
             dc.SetPen(wx.Pen(colours[city.city_x_size]))
@@ -327,8 +322,8 @@ class OverViewCanvas(wx.ScrolledWindow):
     def AddMasked(self, dc, zoomLevel, region, xO, yO):
         dc.SetPen(wx.Pen("LIGHT GRAY"))
         dc.SetBrush(wx.Brush("LIGHT GRAY", wx.CROSSDIAG_HATCH))
-        width = 64 / zoomLevel
-        height = 64 / zoomLevel
+        width = int(64 / zoomLevel)
+        height = int(64 / zoomLevel)
         for x, y in region.missingCities:
             x = int(x * 64 / zoomLevel)
             y = int(y * 64 / zoomLevel)
@@ -361,7 +356,7 @@ class OverViewCanvas(wx.ScrolledWindow):
                 self.DrawRectangle(dc, x - xO, y - yO, width, height)
                 self.DrawRectangle(dc, x - xO - 1, y - 1 - yO, width + 2, height + 2)
                 break
-        dc.EndDrawing()
+        # dc.EndDrawing()
 
     def HighlightNewCity(self, zoomLevel, region, pos, size):
         dc = self.UpdateDrawing(finish=False)
@@ -375,14 +370,14 @@ class OverViewCanvas(wx.ScrolledWindow):
         ]
         x = int(pos[0] * 64 / zoomLevel)
         y = int(pos[1] * 64 / zoomLevel)
-        width = size * 64 / zoomLevel
-        height = size * 64 / zoomLevel
+        width = int(size * 64 / zoomLevel)
+        height = int(size * 64 / zoomLevel)
         dc.SetPen(wx.Pen(colours[size]))
         dc.SetBrush(wx.Brush(colours[size], wx.TRANSPARENT))
         self.DrawRectangle(dc, x + 1 - xO, y + 1 - yO, width - 2, height - 2)
         self.DrawRectangle(dc, x - xO, y - yO, width, height)
         self.DrawRectangle(dc, x - 1 - xO, y - 1 - yO, width + 2, height + 2)
-        dc.EndDrawing()
+        # dc.EndDrawing()
 
     def DrawRectangle(self, dc, x, y, width, height):
         dc.DrawRectangle(

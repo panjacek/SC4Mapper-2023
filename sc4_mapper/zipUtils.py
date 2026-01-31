@@ -1,6 +1,4 @@
 # File: zlib-example-4.py
-
-import string
 import zlib
 
 
@@ -25,7 +23,7 @@ class ZipInputStream:
                     self.data = self.data + self.zip.flush()
                     self.zip = None  # no more data
                     break
-                print("zip read")
+                # print("zip read")
                 self.pos = self.pos + len(data)
                 self.data = self.data + self.zip.decompress(data)
 
@@ -35,9 +33,9 @@ class ZipInputStream:
         elif whence == 1:
             position = self.offset + offset
         else:
-            raise IOError("Illegal argument")
+            raise OSError("Illegal argument")
         if position < self.offset:
-            raise IOError("Cannot seek backwards")
+            raise OSError("Cannot seek backwards")
 
         # skip forward, in 16k blocks
         while position > self.offset:
@@ -54,15 +52,15 @@ class ZipInputStream:
             self.data = self.data[bytes:]
         else:
             data = self.data
-            self.data = ""
+            self.data = b""
         self.offset = self.offset + len(data)
         return data
 
     def readline(self):
         # make sure we have an entire line
-        while self.zip and "\n" not in self.data:
+        while self.zip and b"\n" not in self.data:
             self.__fill(len(self.data) + 512)
-        i = string.find(self.data, "\n") + 1
+        i = self.data.find(b"\n") + 1
         if i <= 0:
             return self.read()
         return self.read(i)

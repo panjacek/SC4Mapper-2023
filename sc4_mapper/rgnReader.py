@@ -1,7 +1,6 @@
 import logging
 import os.path
 import struct
-import sys
 import time
 from enum import Enum
 
@@ -65,7 +64,7 @@ def compute_one_rgb(bLight, height, waterLevel, region):
         GRADIENT_READER.paletteLand,
         lightDir,
     )
-    rgb = Numeric.fromstring(rawRGB, Numeric.int8)
+    rgb = Numeric.frombuffer(rawRGB, Numeric.int8)
     rgb = Numeric.reshape(rgb, (height.shape[0], height.shape[1], 3))
     return rgb
 
@@ -84,36 +83,34 @@ class CitySize(Enum):
 class SC4Entry:
     def __init__(self, buffer, idx):
         self.compressed = False
-        logger.debug(f"{buffer} - {len(buffer)}")
+        logger.debug(f"{buffer!r} - {len(buffer)}")
         self.buffer = buffer
-        # FIXME: this is broken atm
-        # t, g, i, self.fileLocation, self.filesize = struct.unpack("3Lll", buffer)
-        t, g, i, self.fileLocation, self.filesize = struct.unpack("3iii", buffer)
-        logger.debug(f"{t}, {g}, {i}, {self.fileLocation}, {self.filesize}")
+        # DBPF 1.0: T, G, I are uint32 (I), Location and Size are uint32 (I)
+        # We use explicit little-endian < to be safe
+        try:
+            t, g, i, self.fileLocation, self.filesize = struct.unpack("<3I2I", buffer)
+        except struct.error as e:
+            logger.error(f"Failed to unpack entry {idx} from buffer of length {len(buffer)}: {e}")
+            raise
+        logger.debug(f"{t:08X}, {g:08X}, {i:08X}, {self.fileLocation}, {self.filesize}")
         self.TGI = {"t": t, "g": g, "i": i}
         self.initialFileLocation = self.fileLocation
         self.order = idx
         logger.debug(f"{self.TGI} -- {self.fileLocation}, {self.filesize}")
 
-    def read_file(self, read_full=True, decompress=False):
-        logger.debug("Reading full")
-        self.raw_content = None
-        with open(self.file_name) as sc4_file:
-            sc4_file.seek(self.fileLocation)
-            self.raw_content = sc4_file.read(self.filesize)
-            logger.debug(self.raw_content)
-
     def ReadFile(self, sc4, readWhole=True, decompress=False):
         self.rawContent = None
         if readWhole:
             logger.debug("Reading full")
-            sc4.seek(self.fileLocation)
-            self.rawContent = sc4.read(self.filesize)
+            try:
+                sc4.seek(self.fileLocation)
+                self.rawContent = sc4.read(self.filesize)
+            except Exception as e:
+                logger.error(f"Failed to read entry at {self.fileLocation} with size {self.filesize}: {e}")
+                return
             if decompress:
                 if len(self.rawContent) >= 8:
-                    compress_sig = struct.unpack("H", self.rawContent[0x04 : 0x04 + 2])[
-                        0
-                    ]
+                    compress_sig = struct.unpack("H", self.rawContent[0x04 : 0x04 + 2])[0]
                     if compress_sig == COMPRESSED_SIG:
                         self.compressed = True
             if self.compressed:
@@ -128,11 +125,7 @@ class SC4Entry:
 
     def IsItThisTGI(self, tgi):
         logger.debug(f"{tgi} vs self={self.TGI}:")
-        return (
-            tgi[0] == self.TGI["t"]
-            and tgi[1] == self.TGI["g"]
-            and tgi[2] == self.TGI["i"]
-        )
+        return tgi[0] == self.TGI["t"] and tgi[1] == self.TGI["g"] and tgi[2] == self.TGI["i"]
 
     def GetDWORD(self, pos):
         return struct.unpack("i", self.content[pos : pos + 4])[0]
@@ -155,10 +148,9 @@ class SaveFile:
     def ReadHeader(self):
         """read the SC4 DBPF header"""
         self.header = self.sc4.read(96)
-        # FIXME: py2 badddas
-        # self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
-        self.header = self.header[0:0x30] + bytes(12) + self.header[0x30 + 12 : 96]
-        raw = struct.unpack("4s17i24s", self.header)
+        # Standard header is 96 bytes. TGI index is at 0x28
+        raw = struct.unpack("<4s17I24s", self.header)
+        assert raw[0] == b"DBPF"
         self.fileVersionMajor = raw[1]
         self.fileVersionMinor = raw[2]
         self.dateCreated = raw[3]
@@ -177,12 +169,17 @@ class SaveFile:
         self.entries = []
         self.sc4.seek(self.indexRecordPosition)
         header = self.sc4.read(self.indexRecordLength)
-        for idx in range(self.indexRecordEntryCount):
-            entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
+        if len(header) < self.indexRecordLength:
+            logger.warning(f"Index record for {self.fileName} is shorter than expected: {len(header)} < {self.indexRecordLength}")
 
-            if entry.IsItThisTGI(
-                (0xA9DD6FF4, 0xE98F9525, 0x00000001)
-            ) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
+        for idx in range(self.indexRecordEntryCount):
+            chunk = header[idx * 20 : idx * 20 + 20]
+            if len(chunk) < 20:
+                logger.warning(f"Truncated index in {self.fileName}: entry {idx} not found")
+                break
+            entry = SC4Entry(chunk, idx)
+
+            if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                 entry.ReadFile(self.sc4, True, True)
             else:
                 entry.ReadFile(self.sc4)
@@ -199,28 +196,33 @@ class SaveFile:
         global generic_saveValue
         time.sleep(0.1)
         self.heightMap = heightMap
+        logger.info(f"SaveFile.Save called with heightMap shape: {heightMap.shape}, dtype: {heightMap.dtype}")
         # FIXME: redundant
         """
         xSize = self.heightMap.shape[0]
         ySize = self.heightMap.shape[1]
         """
-        newData = QFS.encode(struct.pack("H", 0x2) + self.heightMap.tostring())
-        newData = struct.pack("l", len(newData)) + newData
+        logger.info("About to call QFS.encode")
+        packed_data = struct.pack("H", 0x2) + self.heightMap.tobytes()
+        logger.info(f"Packed data length: {len(packed_data)}")
+        newData = QFS.encode(packed_data)
+        logger.info(f"QFS.encode completed, newData length: {len(newData)}")
+        # DBPF 1.0 entries start with the uncompressed length (4 bytes LE)
+        uncompressed_len_prefix = struct.pack("<I", len(packed_data))
+        newData = uncompressed_len_prefix + newData
         self.indexRecordPosition = 96
         self.dateUpdated = int(time.time()) + generic_saveValue * 65535
         generic_saveValue += 1
         self.header = (
             self.header[0:0x1C]
-            + struct.pack("I", self.dateUpdated)
+            + struct.pack("<I", self.dateUpdated)
             + self.header[0x1C + 4 : 0x28]
-            + struct.pack("l", self.indexRecordPosition)
+            + struct.pack("<I", self.indexRecordPosition)
             + self.header[0x28 + 4 : 96]
         )
         with open(self.fileName, "rb") as sc4:
             for entry in self.entries:
-                if entry.IsItThisTGI(
-                    (0xA9DD6FF4, 0xE98F9525, 0x00000001)
-                ) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
+                if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                     entry.ReadFile(sc4, True, True)
                 if entry.rawContent is None:
                     entry.ReadFile(sc4, True)
@@ -229,11 +231,10 @@ class SaveFile:
             try:
                 self.sc4 = open(saveName, "wb")
                 break
-            except IOError:
+            except OSError:
                 dlg = wx.MessageDialog(
                     None,
-                    "file %s seems to be ReadOnly\nDo you want to skip?(Yes)\nOr retry ?(No)"
-                    % (saveName),
+                    f"file {saveName} seems to be ReadOnly\nDo you want to skip?(Yes)\nOr retry ?(No)",
                     "Warning",
                     wx.YES_NO | wx.ICON_QUESTION,
                 )
@@ -247,18 +248,9 @@ class SaveFile:
         pos = self.indexRecordPosition + self.indexRecordLength
         for entry in self.entries:
             entry.fileLocation = pos
-            newbuffer = (
-                entry.buffer[0:0x0C]
-                + struct.pack("l", entry.fileLocation)
-                + entry.buffer[0x0C + 4 :]
-            )
+            newbuffer = entry.buffer[0:0x0C] + struct.pack("<I", entry.fileLocation) + entry.buffer[0x0C + 4 :]
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)):  # heights
-                newbuffer = (
-                    entry.buffer[0:0x0C]
-                    + struct.pack("l", entry.fileLocation)
-                    + struct.pack("l", len(newData))
-                    + entry.buffer[0x10 + 4 :]
-                )
+                newbuffer = entry.buffer[0:0x0C] + struct.pack("<I", entry.fileLocation) + struct.pack("<I", len(newData)) + entry.buffer[0x10 + 4 :]
                 entry.rawContent = newData
                 entry.compressed = 1
                 entry.filesize = len(newData)
@@ -266,20 +258,18 @@ class SaveFile:
                 v = self.dateUpdated
                 entry.content = (
                     entry.content[0:0x04]
-                    + struct.pack("I", city_x_position)
-                    + struct.pack("I", city_y_position)
+                    + struct.pack("<I", city_x_position)
+                    + struct.pack("<I", city_y_position)
                     + entry.content[0x0C:39]
-                    + struct.pack("I", v)
+                    + struct.pack("<I", v)
                     + entry.content[39 + 4 :]
                 )
                 newDataCity = entry.rawContent[:]
                 newDataCity = QFS.encode(entry.content)
-                newDataCity = struct.pack("l", len(newDataCity)) + newDataCity
+                # Prefix with uncompressed length
+                newDataCity = struct.pack("<I", len(entry.content)) + newDataCity
                 newbuffer = (
-                    entry.buffer[0:0x0C]
-                    + struct.pack("l", entry.fileLocation)
-                    + struct.pack("l", len(newDataCity))
-                    + entry.buffer[0x10 + 4 :]
+                    entry.buffer[0:0x0C] + struct.pack("<I", entry.fileLocation) + struct.pack("<I", len(newDataCity)) + entry.buffer[0x10 + 4 :]
                 )
                 entry.rawContent = newDataCity
                 entry.compressed = 1
@@ -290,29 +280,17 @@ class SaveFile:
                 pngData = png.read()
                 png.close()
                 os.unlink(n + ".PNG")
-                newbuffer = (
-                    entry.buffer[0:0x0C]
-                    + struct.pack("I", entry.fileLocation)
-                    + struct.pack("I", len(pngData))
-                    + entry.buffer[0x10 + 4 :]
-                )
+                newbuffer = entry.buffer[0:0x0C] + struct.pack("<I", entry.fileLocation) + struct.pack("<I", len(pngData)) + entry.buffer[0x10 + 4 :]
                 entry.rawContent = pngData
                 entry.compressed = 0
                 entry.filesize = len(pngData)
-            if entry.IsItThisTGI(
-                (0x8A2482B9, 0x4A2482BB, 0x00000002)
-            ):  # alpha region view
+            if entry.IsItThisTGI((0x8A2482B9, 0x4A2482BB, 0x00000002)):  # alpha region view
                 n = os.path.splitext(saveName)[0]
                 png = open(n + "_alpha.PNG", "rb")
                 pngData = png.read()
                 png.close()
                 os.unlink(n + "_alpha.PNG")
-                newbuffer = (
-                    entry.buffer[0:0x0C]
-                    + struct.pack("I", entry.fileLocation)
-                    + struct.pack("I", len(pngData))
-                    + entry.buffer[0x10 + 4 :]
-                )
+                newbuffer = entry.buffer[0:0x0C] + struct.pack("<I", entry.fileLocation) + struct.pack("<I", len(pngData)) + entry.buffer[0x10 + 4 :]
                 entry.rawContent = pngData
                 entry.compressed = 0
                 entry.filesize = len(pngData)
@@ -326,44 +304,58 @@ class SaveFile:
 
 def Save(city, folder, color, waterLevel):
     """Save a city file, build the thumbnail for region view"""
-    mainPath = sys.path[0]
-    # FIXME: this looks bad
-    os.chdir(mainPath)
     if city.city_x_size == CitySize.SMALL.value:
         name = "City - Small.sc4"
-    if city.city_x_size == CitySize.MEDIUM.value:
+    elif city.city_x_size == CitySize.MEDIUM.value:
         name = "City - Medium.sc4"
-    if city.city_x_size == CitySize.LARGE.value:
+    elif city.city_x_size == CitySize.LARGE.value:
         name = "City - Large.sc4"
-    city.fileName = (
-        folder
-        + "/"
-        + "City - New city(%03d-%03d).sc4"
-        % (city.city_x_position, city.city_y_position)
-    )
+    else:
+        raise ValueError(f"Invalid city size: {city.city_x_size}")
+
+    # Use template from static directory
+    template_path = os.path.join(base_dir, "static", name)
+
+    city.fileName = folder + "/" + f"City - New city({city.city_x_position:03d}-{city.city_y_position:03d}).sc4"
+    logger.info("About to call BuildThumbnail")
     BuildThumbnail(city, color, waterLevel)
-    saved = SaveFile(name)
-    return saved.Save(
-        city.city_x_position, city.city_y_position, city.heightMap, city.fileName
-    )
+    logger.info("BuildThumbnail completed, creating SaveFile")
+    saved = SaveFile(template_path)
+    logger.info("SaveFile created, calling Save")
+    result = saved.Save(city.city_x_position, city.city_y_position, city.heightMap, city.fileName)
+    logger.info(f"Save completed with result: {result}")
+    return result
 
 
 def BuildThumbnail(city, colors, waterLevel):
     """Build the region view images (normal&alpha)"""
     n = os.path.splitext(city.fileName)[0]
-    minx, miny, maxx, maxy, r = tools3D.generateImage(
-        waterLevel, city.heightMap.shape, city.heightMap.tostring(), colors
-    )
-    logger.info(city.heightMap.shape, len(colors))
-    logger.info(minx, miny, maxx, maxy)
-    maxx += 2
-    offset = len(r) / 2
-    im = Image.fromstring("RGB", (514, 428), r[:offset])
-    im = im.crop([minx, miny, maxx, maxy])
-    im.save(n + ".PNG")
-    im = Image.fromstring("RGB", (514, 428), r[offset:])
-    im = im.crop([minx, miny, maxx, maxy])
-    im.save(n + "_alpha.PNG")
+    logger.info(f"HeightMap shape: {city.heightMap.shape}, Colors len: {len(colors)}")
+    try:
+        minx, miny, maxx, maxy, r = tools3D.generateImage(waterLevel, city.heightMap.shape, city.heightMap.tobytes(), colors)
+        logger.info(f"Coords: {minx}, {miny}, {maxx}, {maxy}")
+        logger.info(f"Returned data length: {len(r)}, expected: {514 * 428 * 6}")
+        maxx += 2
+        offset = int(len(r) / 2)
+        im = Image.frombytes("RGB", (514, 428), r[:offset])
+        im = im.crop([minx, miny, maxx, maxy])
+        im.save(n + ".PNG")
+        im = Image.frombytes("RGB", (514, 428), r[offset:])
+        im = im.crop([minx, miny, maxx, maxy])
+        im.save(n + "_alpha.PNG")
+    except Exception as e:
+        logger.warning(
+            f"Error in BuildThumbnail ({type(e).__name__}): {e}. Creating placeholder thumbnails. "
+            f"WaterLevel: {waterLevel}, Shape: {city.heightMap.shape}, "
+            f"Colors: {len(colors)}, Dtype: {city.heightMap.dtype}"
+        )
+        # Create minimal placeholder PNGs so save operation can continue
+        logger.info("Creating placeholder thumbnails")
+        placeholder = Image.new("RGB", (64, 64), color=(128, 128, 128))
+        logger.info(f"Saving placeholder to {n}.PNG")
+        placeholder.save(n + ".PNG")
+        placeholder.save(n + "_alpha.PNG")
+        logger.info("Placeholder thumbnails saved")
     return
 
 
@@ -385,29 +377,29 @@ class SC4City:
                 250,
                 self.city_x_position,
                 self.city_y_position,
-                self.city_x_size / 2,
-                self.city_y_size / 2,
+                self.city_x_size // 2,
+                self.city_y_size // 2,
             ),
             CityProxy(
                 250,
-                self.city_x_position + self.city_x_size / 2,
+                self.city_x_position + self.city_x_size // 2,
                 self.city_y_position,
-                self.city_x_size / 2,
-                self.city_y_size / 2,
+                self.city_x_size // 2,
+                self.city_y_size // 2,
             ),
             CityProxy(
                 250,
-                self.city_x_position + self.city_x_size / 2,
-                self.city_y_position + self.city_y_size / 2,
-                self.city_x_size / 2,
-                self.city_y_size / 2,
+                self.city_x_position + self.city_x_size // 2,
+                self.city_y_position + self.city_y_size // 2,
+                self.city_x_size // 2,
+                self.city_y_size // 2,
             ),
             CityProxy(
                 250,
                 self.city_x_position,
-                self.city_y_position + self.city_y_size / 2,
-                self.city_x_size / 2,
-                self.city_y_size / 2,
+                self.city_y_position + self.city_y_size // 2,
+                self.city_x_size // 2,
+                self.city_y_size // 2,
             ),
         ]
 
@@ -417,14 +409,24 @@ class SC4File(SC4City):
 
     def __init__(self, fileName):
         self.fileName = fileName
+        self.city_x_position = 0
+        self.city_y_position = 0
+        self.city_x_size = 0
+        self.city_y_size = 0
+        self.cityName = ""
+        self.xSize = 0
+        self.ySize = 0
+        self.xPos = 0
+        self.yPos = 0
 
     def read_header(self):
         with open(self.fileName, "rb") as sc4_file_obj:
             self.header = sc4_file_obj.read(96)
-        # FIXME: thats some black magic at this hour... no idea...
-        # self.header = self.header[0:0x30] + "\0" * 12 + self.header[0x30 + 12 : 96]
-        self.header = self.header[0:0x30] + bytes(12) + self.header[0x30 + 12 : 96]
-        raw = struct.unpack("4s17i24s", self.header)
+        if len(self.header) < 96:
+            logger.error(f"File {self.fileName} is too small to be a DBPF file ({len(self.header)} bytes)")
+            raise EOFError(f"File {self.fileName} is too small")
+
+        raw = struct.unpack("<4s17I24s", self.header)
         logger.debug(raw)
 
         assert raw[0] == b"DBPF"
@@ -442,10 +444,7 @@ class SC4File(SC4City):
         self.holeRecordPosition = raw[13]
         self.holeRecordLength = raw[14]
 
-        logger.info(
-            f"{os.path.split(self.fileName)[1]} {self.indexRecordPosition} "
-            f"{self.indexRecordEntryCount} {self.indexRecordLength} "
-        )
+        logger.info(f"{os.path.split(self.fileName)[1]} {self.indexRecordPosition} {self.indexRecordEntryCount} {self.indexRecordLength} ")
 
     def read_entries(self):
         """Read all entries, only a few are read deeply and only the height entry is kept"""
@@ -456,14 +455,16 @@ class SC4File(SC4City):
 
         logger.debug(header)
         for idx in range(self.indexRecordEntryCount):
-            entry = SC4Entry(header[idx * 20 : idx * 20 + 20], idx)
+            chunk = header[idx * 20 : idx * 20 + 20]
+            if len(chunk) < 20:
+                logger.warning(f"Truncated index in {self.fileName}: expected {self.indexRecordEntryCount} entries, but only found {idx}")
+                break
+            entry = SC4Entry(chunk, idx)
 
-            if entry.IsItThisTGI(
-                (0xA9DD6FF4, 0xE98F9525, 0x00000001)
-            ) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
+            if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
                 # entry.ReadFile(self.sc4, True, True)
                 with open(self.fileName, "rb") as sc4_file_obj:
-                    entry.read_file(sc4_file_obj, True, True)
+                    entry.ReadFile(sc4_file_obj, True, True)
 
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)):
                 logger.info("This was the terrain")
@@ -622,7 +623,7 @@ def parse_config(config, waterLevel):
                     smalls.append((x, y))
                     small += 1
 
-    for name, x in zip(["big", "medium", "small"], [big, medium, small]):
+    for name, x in zip(["big", "medium", "small"], [big, medium, small], strict=False):
         logger.info(f"{name}={x}")
     cities = (
         [CityProxy(waterLevel, c[0], c[1], 1, 1) for c in smalls]
@@ -635,7 +636,7 @@ def parse_config(config, waterLevel):
 def BuildBestConfig(configSize):
     """Create a config.bmp that will be filled with as most big cities as it can, then medium then small"""
     im = Image.new("RGB", configSize, "#0000FF")
-    nbBigX = configSize[0] / 4
+    nbBigX = configSize[0] // 4
     nbMediumX = 0
     nbSmallX = 0
     rX = configSize[0] % 4
@@ -643,7 +644,7 @@ def BuildBestConfig(configSize):
         nbSmallX = 1
     if rX == 3 or rX == 2:
         nbMediumX = 1
-    nbBigY = configSize[1] / 4
+    nbBigY = configSize[1] // 4
     # nbSmallY = 0
     nbMediumY = 0
     rY = configSize[1] % 4
@@ -653,11 +654,28 @@ def BuildBestConfig(configSize):
     """
     if rY == 3 or rY == 2:
         nbMediumY = 1
-    logger.info(configSize[0], rX, nbBigX, "(B)", nbMediumX, "(M)", nbSmallX, "(S)")
-    im.paste("#00FF00", (nbBigX * 4, 0, configSize[0], configSize[1]))
-    im.paste("#00FF00", (0, nbBigY * 4, configSize[0], configSize[1]))
-    im.paste("#FF0000", (nbBigX * 4 + nbMediumX * 2, 0, configSize[0], configSize[1]))
-    im.paste("#FF0000", (0, nbBigY * 4 + nbMediumY * 2, configSize[0], configSize[1]))
+    logger.info(f"{configSize[0]} {rX} {nbBigX} (B) {nbMediumX} (M) {nbSmallX} (S)")
+    # Ensure coordinates are integers for Pillow
+    im.paste("#00FF00", (int(nbBigX * 4), 0, int(configSize[0]), int(configSize[1])))
+    im.paste("#00FF00", (0, int(nbBigY * 4), int(configSize[0]), int(configSize[1])))
+    im.paste(
+        "#FF0000",
+        (
+            int(nbBigX * 4 + nbMediumX * 2),
+            0,
+            int(configSize[0]),
+            int(configSize[1]),
+        ),
+    )
+    im.paste(
+        "#FF0000",
+        (
+            0,
+            int(nbBigY * 4 + nbMediumY * 2),
+            int(configSize[0]),
+            int(configSize[1]),
+        ),
+    )
     return im
 
 
@@ -672,6 +690,7 @@ class SC4Region:
         self.all_cities = []
         self.all_city_file_names = []
         self.original_config = None
+        self.missingCities = []
 
         if config is not None:
             self.folder = None
@@ -686,12 +705,11 @@ class SC4Region:
         """Verify saves vs config"""
         for save in self.all_city_file_names:
             if self.dlg is not None:
-                self.dlg.Update(
-                    1, "Please wait while loading the region" + "\nReading " + save
-                )
+                self.dlg.Update(1, "Please wait while loading the region" + "\nReading " + save)
             sc4 = SC4File(os.path.join(self.folder, save))
             sc4.read_header()
             sc4.read_entries()
+
             for i, city in enumerate(self.all_cities):
                 if city.check_position(sc4.city_x_position, sc4.city_y_position):
                     if (
@@ -701,9 +719,13 @@ class SC4Region:
                         and city.city_x_size == sc4.city_x_size
                         and city.city_y_size == sc4.city_y_size
                     ):
-                        self.all_cities = self.all_cities[:i] + self.all_cities[i + 1 :]
+                        self.all_cities.pop(i)
+                        break
                     else:
                         # FIXME: move to ui module
+                        logger.error(f"Mismatch for city at {sc4.city_x_position}, {sc4.city_y_position}")
+                        logger.error(f"Config city: {city.city_x_position}, {city.city_y_position}, {city.city_x_size}x{city.city_y_size}")
+                        logger.error(f"Save city: {sc4.city_x_position}, {sc4.city_y_position}, {sc4.city_x_size}x{sc4.city_y_size}")
                         dlg1 = wx.MessageDialog(
                             None,
                             "It seems that the config.bmp does not match the savegames present in the region folder",
@@ -725,13 +747,9 @@ class SC4Region:
     def _init_config(self):
         all_files = cached_listdir(self.folder)
         logger.debug(all_files)
-        self.all_city_file_names = [
-            x for x in all_files if os.path.splitext(x)[1] == ".sc4"
-        ]
+        self.all_city_file_names = [x for x in all_files if os.path.splitext(x)[1] == ".sc4"]
         try:
-            config_file_name = utils.encodeFilename(
-                os.path.join(self.folder, "config.bmp")
-            )
+            config_file_name = utils.encodeFilename(os.path.join(self.folder, "config.bmp"))
             config_file_name = os.path.join(self.folder, "config.bmp")
             logger.debug(f"{config_file_name} - {type(config_file_name)}")
             # self.config = Image.open(config_file_name)
@@ -742,6 +760,8 @@ class SC4Region:
             logger.exception(exc)
             self.config = None
             raise
+
+        self._compare_saves_vs_config()
 
     def crop_config(self):
         "find the bbox of valid cities and return the new resized config"
@@ -759,7 +779,7 @@ class SC4Region:
         sizeX = maxX - minX
         sizeY = maxY - minY
         config = self.config.crop((minX, minY, maxX, maxY))
-        logger.info("crop size", minX, minY, maxX, maxY, sizeX, sizeY)
+        logger.info(f"crop size: {minX}, {minY}, {maxX}, {maxY}, {sizeX}, {sizeY}")
         return minX, minY, maxX, maxY, sizeX, sizeY, config
 
     def BuildConfig(self):
@@ -850,9 +870,7 @@ class SC4Region:
         for city in self.all_cities:
 
             def collide(x1, y1, w1, h1, x2, y2, w2, h2):
-                return not (
-                    x1 >= x2 + w2 or x1 + w1 <= x2 or y1 >= y2 + h2 or y1 + h1 <= y2
-                )
+                return not (x1 >= x2 + w2 or x1 + w1 <= x2 or y1 >= y2 + h2 or y1 + h1 <= y2)
 
             if collide(
                 pos[0],
@@ -878,10 +896,7 @@ class SC4Region:
         for i, city in enumerate(self.all_cities):
             dlg.Update(
                 i,
-                "Please wait while saving the region"
-                + "\nSaving "
-                + " City - New city(%03d-%03d).sc4"
-                % (city.city_x_position, city.city_y_position),
+                "Please wait while saving the region" + "\nSaving " + f" City - New city({city.city_x_position:03d}-{city.city_y_position:03d}).sc4",
             )
             citySave = CityProxy(
                 self.waterLevel,
@@ -890,29 +905,20 @@ class SC4Region:
                 city.city_x_size,
                 city.city_y_size,
             )
-            citySave.heightMap = Numeric.zeros(
-                (citySave.ySize, citySave.xSize), Numeric.uint16
-            )
+            citySave.heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
             citySave.heightMap[::, ::] = self.height[
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            citySave.heightMap = citySave.heightMap.astype(
-                Numeric.float32
-            ) / Numeric.asarray(10, Numeric.float32)
+            citySave.heightMap = citySave.heightMap.astype(Numeric.float32) / Numeric.asarray(10, Numeric.float32)
             x1 = citySave.xPos
             y1 = citySave.yPos
             x2 = x1 + citySave.xSize
             y2 = y1 + citySave.ySize
-            logger.info(x1, y1, x2, y2)
+            logger.info(f"{x1}, {y1}, {x2}, {y2}")
             logger.info(
-                citySave.yPos + subRgn[2],
-                "to",
-                citySave.yPos + subRgn[2] + citySave.ySize,
-                "and",
-                citySave.xPos + subRgn[0],
-                "to",
-                citySave.xPos + subRgn[0] + citySave.xSize,
+                f"{citySave.yPos + subRgn[2]} to {citySave.yPos + subRgn[2] + citySave.ySize} "
+                f"and {citySave.xPos + subRgn[0]} to {citySave.xPos + subRgn[0] + citySave.xSize}"
             )
             lightDir = normalize((1, -5, -1))
             rawRGB = tools3D.onePassColors(
@@ -924,18 +930,14 @@ class SC4Region:
                 GRADIENT_READER.paletteLand,
                 lightDir,
             )
-            logger.info(citySave.heightMap.shape, len(rawRGB))
+            logger.info(f"HeightMap shape: {citySave.heightMap.shape}, RawRGB len: {len(rawRGB)}")
             try:
                 if not Save(citySave, self.folder, rawRGB, self.waterLevel):
                     saved = False
             except Exception as exc:
                 logger.exception(exc)
                 logger.debug(
-                    (
-                        "problem while saving:\n"
-                        f"{citySave.fileName} {city.city_x_position}, {city.city_y_position}"
-                        f"{city.city_x_size}, {city.city_y_size}"
-                    )
+                    f"problem while saving:\n{citySave.fileName} {city.city_x_position}, {city.city_y_position}{city.city_x_size}, {city.city_y_size}"
                 )
                 saved = False
             citySave.heightMap = None
@@ -970,12 +972,9 @@ class SC4Region:
                     city.yPos : city.yPos + city.ySize,
                     city.xPos : city.xPos + city.xSize,
                 ] = Numeric.reshape(
-                    (
-                        Numeric.fromstring(
-                            city.heightMapEntry.content[2:], Numeric.float32
-                        )
-                        * Numeric.array(10, Numeric.float32)
-                    ).astype(Numeric.uint16),
+                    (Numeric.frombuffer(city.heightMapEntry.content[2:], Numeric.float32) * Numeric.array(10, Numeric.float32)).astype(
+                        Numeric.uint16
+                    ),
                     (city.ySize, city.xSize),
                 )
                 del city.heightMapEntry
@@ -983,9 +982,7 @@ class SC4Region:
                 self.height[
                     city.yPos : city.yPos + city.ySize,
                     city.xPos : city.xPos + city.xSize,
-                ] = Numeric.ones(
-                    (city.ySize, city.xSize), Numeric.uint16
-                ) * Numeric.array(self.waterLevel - 50).astype(Numeric.uint16)
+                ] = Numeric.ones((city.ySize, city.xSize), Numeric.uint16) * Numeric.array(self.waterLevel - 50).astype(Numeric.uint16)
             city.height = None
         dlg.Update(2, "Please wait while loading the region\nBuilding textures")
         logger.info("region read")

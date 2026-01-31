@@ -1,5 +1,4 @@
 import pytest
-import wx
 
 from sc4_mapper.SC4MapApp import SC4App, check_tools_pyd, main
 
@@ -21,7 +20,7 @@ class TestMainWindow:
     def test_main(self, mocker):
         init_mock = mocker.patch("sc4_mapper.SC4MapApp.SC4App")
         check_tools_mock = mocker.patch("sc4_mapper.SC4MapApp.check_tools_pyd")
-        app_mock = mocker.patch("wx.App.MainLoop")
+        mocker.patch("wx.App.MainLoop")
         main()
         check_tools_mock.assert_called_once()
         init_mock.assert_called_once_with(False)
