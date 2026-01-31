@@ -1,10 +1,11 @@
-# Clean Dockerfile for SC4Mapper-2013 using Debian system packages
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies via apt for stability
+# Install dependencies via apt
+# Note: python3-pip is now strictly managed (PEP 668). 
+# Using --break-system-packages may be needed for pip installs later.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
@@ -15,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     make \
     libgtk-3-0 \
-    libgl1-mesa-glx \
+    libgl1 \
     libglu1-mesa \
     libsdl2-2.0-0 \
     libnotify4 \
