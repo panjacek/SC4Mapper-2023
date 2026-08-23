@@ -2,28 +2,64 @@ name: CI
 
 on:
   push:
-    branches: [ "master", "main" ]
+    branches: ["master", "main"]
   pull_request:
-    branches: [ "master", "main" ]
+    branches: ["master", "main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  # Fast feedback: pure uv, no docker, no image build.
+  lint:
+    name: lint (ruff)
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Build Docker image
-      run: docker build -t sc4mapper:latest .
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - name: Sync dev env
+        run: uv sync --group dev --no-install-package wxpython
+      - name: Ruff check
+        run: uv run --no-sync ruff check .
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check .
 
-    - name: Build Test Image
-      run: docker build -t sc4mapper:test -f Dockerfile.test .
+  # Core suite (wx-free modules) against the locked venv — no docker.
+  test-core:
+    name: tests / core (uv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+      - name: Pytest core (builds QFS/tools3D against venv python)
+        run: >-
+          make test-local
+          PYTEST_ARGS="--cov=sc4_mapper --cov-report=xml --cov-report=term-missing -q"
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-core
+          path: coverage.xml
+          if-no-files-found: warn
 
-    - name: Run Ruff Check
-      run: docker run --rm --entrypoint python3 sc4mapper:test -m ruff check .
-      
-    - name: Run Ruff Format Check
-      run: docker run --rm --entrypoint python3 sc4mapper:test -m ruff format --check .
-
-    - name: Run Tests
-      run: docker run --rm sc4mapper:test
+  # Heavy: image build + xvfb UI suite. Only runs once code is proven sound.
+  test-ui:
+    name: tests / ui + app (docker, xvfb)
+    needs: [lint, test-core]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # container-driver builder: enables GHA layer cache + --load
+      - uses: docker/setup-buildx-action@v4
+      - name: Build images (runtime + test)
+        run: >-
+          make build-test
+          BUILD_CACHE="--load --cache-from type=gha --cache-to type=gha,mode=max"
+      - name: Pytest incl. UI under xvfb
+        run: make test

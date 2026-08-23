@@ -73,16 +73,3 @@ class ZipInputStream:
                 break
             lines.append(s)
         return lines
-
-
-#
-# try it out
-if 0:
-    import StringIO
-
-    data = open("samples/sample.txt").read()
-    data = zlib.compress(data)
-
-    file = ZipInputStream(StringIO.StringIO(data))
-    for line in file.readlines():
-        print(line[:-1])

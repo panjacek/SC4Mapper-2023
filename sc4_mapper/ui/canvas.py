@@ -1,10 +1,11 @@
 import logging
 
-import numpy as Numeric
+import numpy as np
 import tools3D
 import wx
 
-from sc4_mapper import EDITMODE_NONE, SCROLL_RATE, rgnReader
+from sc4_mapper import EDITMODE_NONE, SCROLL_RATE
+from sc4_mapper.core import rgnReader
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ class OverViewCanvas(wx.ScrolledWindow):
         x *= self.parent.zoomLevel
         y *= self.parent.zoomLevel
         logger.debug(f"Drawing from {x}, {y}")
-        heightMap = Numeric.zeros((sizeDest[1], sizeDest[0]), Numeric.uint16)
+        heightMap = np.zeros((sizeDest[1], sizeDest[0]), np.uint16)
         # Safe slicing to avoid ValueError on shape mismatch
         source_slice = self.parent.region.height[
             y : y + sizeSource[1] : self.parent.zoomLevel,
@@ -166,15 +167,15 @@ class OverViewCanvas(wx.ScrolledWindow):
         ]
         h, w = source_slice.shape
         heightMap[0:h, 0:w] = source_slice
-        heightMap = heightMap.astype(Numeric.float32)
-        heightMap /= Numeric.array(10).astype(Numeric.float32)
+        heightMap = heightMap.astype(np.float32)
+        heightMap /= np.array(10).astype(np.float32)
         rawRGB = tools3D.onePassColors(
             False,
             heightMap.shape,
             self.parent.region.waterLevel,
             heightMap,
-            rgnReader.GRADIENT_READER.paletteWater,
-            rgnReader.GRADIENT_READER.paletteLand,
+            rgnReader.get_gradient_reader().paletteWater,
+            rgnReader.get_gradient_reader().paletteLand,
             lightDir,
         )
         img = wx.Image(heightMap.shape[1], heightMap.shape[0])

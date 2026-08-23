@@ -1,4 +1,4 @@
-from sc4_mapper import helpers
+from sc4_mapper.core import helpers
 
 
 def test_dlg_stub():

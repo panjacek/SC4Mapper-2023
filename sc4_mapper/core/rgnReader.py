@@ -7,37 +7,29 @@ from enum import Enum
 # FIXME: SHHHH no no no
 from math import sqrt
 
-# import JpegImagePlugin
-import numpy as Numeric
-
-# import PngImagePlugin
+import numpy as np
 import QFS
 import tools3D
-import wx
 from PIL import Image, ImageDraw
 
-from sc4_mapper import base_dir, utils
-from sc4_mapper.gradient_reader import GradientReader
+from sc4_mapper import base_dir
+from sc4_mapper.core import helpers, utils
+from sc4_mapper.core.gradient_reader import GradientReader
 
 logger = logging.getLogger(__name__)
 
-# Image._initialized = 2
 generic_saveValue = 3
 COMPRESSED_SIG = 0xFB10
 
 # FIXME: hacky hacks
-GRADIENT_READER = GradientReader(os.path.join(base_dir, "static", "basicColors.ini"))
-
-# FIXME: thats hack for missing dircache... not sure its needed
-global_cache = {}
+GRADIENT_READER = None
 
 
-def cached_listdir(path):
-    res = global_cache.get(path)
-    if res is None:
-        res = os.listdir(path)
-        global_cache[path] = res
-    return res
+def get_gradient_reader():
+    global GRADIENT_READER
+    if GRADIENT_READER is None:
+        GRADIENT_READER = GradientReader(os.path.join(base_dir, "static", "basicColors.ini"))
+    return GRADIENT_READER
 
 
 def normalize(p1):
@@ -60,12 +52,12 @@ def compute_one_rgb(bLight, height, waterLevel, region):
         height.shape,
         waterLevel,
         height,
-        GRADIENT_READER.paletteWater,
-        GRADIENT_READER.paletteLand,
+        get_gradient_reader().paletteWater,
+        get_gradient_reader().paletteLand,
         lightDir,
     )
-    rgb = Numeric.frombuffer(rawRGB, Numeric.int8)
-    rgb = Numeric.reshape(rgb, (height.shape[0], height.shape[1], 3))
+    rgb = np.frombuffer(rawRGB, np.int8)
+    rgb = np.reshape(rgb, (height.shape[0], height.shape[1], 3))
     return rgb
 
 
@@ -232,6 +224,8 @@ class SaveFile:
                 self.sc4 = open(saveName, "wb")
                 break
             except OSError:
+                import wx  # FIXME: move to ui module
+
                 dlg = wx.MessageDialog(
                     None,
                     f"file {saveName} seems to be ReadOnly\nDo you want to skip?(Yes)\nOr retry ?(No)",
@@ -462,7 +456,6 @@ class SC4File(SC4City):
             entry = SC4Entry(chunk, idx)
 
             if entry.IsItThisTGI((0xA9DD6FF4, 0xE98F9525, 0x00000001)) or entry.IsItThisTGI((0xCA027EDB, 0xCA027EE1, 0x00000000)):
-                # entry.ReadFile(self.sc4, True, True)
                 with open(self.fileName, "rb") as sc4_file_obj:
                     entry.ReadFile(sc4_file_obj, True, True)
 
@@ -529,7 +522,7 @@ class CityProxy(SC4City):
 
 def parse_config(config, waterLevel):
     """Read the config.bmp, verify it, and create the city proxies for it"""
-    verified = Numeric.zeros(config.size, Numeric.int8)
+    verified = np.zeros(config.size, np.int8)
 
     def redish(value):
         """True for small city"""
@@ -645,7 +638,6 @@ def BuildBestConfig(configSize):
     if rX == 3 or rX == 2:
         nbMediumX = 1
     nbBigY = configSize[1] // 4
-    # nbSmallY = 0
     nbMediumY = 0
     rY = configSize[1] % 4
     # FIXME: redundant
@@ -726,6 +718,8 @@ class SC4Region:
                         logger.error(f"Mismatch for city at {sc4.city_x_position}, {sc4.city_y_position}")
                         logger.error(f"Config city: {city.city_x_position}, {city.city_y_position}, {city.city_x_size}x{city.city_y_size}")
                         logger.error(f"Save city: {sc4.city_x_position}, {sc4.city_y_position}, {sc4.city_x_size}x{sc4.city_y_size}")
+                        import wx  # FIXME: move to ui module
+
                         dlg1 = wx.MessageDialog(
                             None,
                             "It seems that the config.bmp does not match the savegames present in the region folder",
@@ -745,15 +739,13 @@ class SC4Region:
             self.dlg.Update(1, "Please wait while loading the region")
 
     def _init_config(self):
-        all_files = cached_listdir(self.folder)
+        all_files = helpers.cached_listdir(self.folder)
         logger.debug(all_files)
         self.all_city_file_names = [x for x in all_files if os.path.splitext(x)[1] == ".sc4"]
         try:
             config_file_name = utils.encodeFilename(os.path.join(self.folder, "config.bmp"))
             config_file_name = os.path.join(self.folder, "config.bmp")
             logger.debug(f"{config_file_name} - {type(config_file_name)}")
-            # self.config = Image.open(config_file_name)
-            # config_file_name = "/app/region_tests/San Francisco/config.bmp"
             with open(config_file_name, "rb") as bmp_temp:
                 self.config = Image.open(bmp_temp).copy()
         except Exception as exc:
@@ -905,12 +897,12 @@ class SC4Region:
                 city.city_x_size,
                 city.city_y_size,
             )
-            citySave.heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
+            citySave.heightMap = np.zeros((citySave.ySize, citySave.xSize), np.uint16)
             citySave.heightMap[::, ::] = self.height[
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            citySave.heightMap = citySave.heightMap.astype(Numeric.float32) / Numeric.asarray(10, Numeric.float32)
+            citySave.heightMap = citySave.heightMap.astype(np.float32) / np.asarray(10, np.float32)
             x1 = citySave.xPos
             y1 = citySave.yPos
             x2 = x1 + citySave.xSize
@@ -926,8 +918,8 @@ class SC4Region:
                 citySave.heightMap.shape,
                 self.waterLevel,
                 citySave.heightMap,
-                GRADIENT_READER.paletteWater,
-                GRADIENT_READER.paletteLand,
+                get_gradient_reader().paletteWater,
+                get_gradient_reader().paletteLand,
                 lightDir,
             )
             logger.info(f"HeightMap shape: {citySave.heightMap.shape}, RawRGB len: {len(rawRGB)}")
@@ -965,16 +957,14 @@ class SC4Region:
             return
 
         dlg.Update(2, "Please wait while loading the region\nBuilding textures")
-        self.height = Numeric.zeros(self.shape, Numeric.uint16)
+        self.height = np.zeros(self.shape, np.uint16)
         for city in self.all_cities:
             if hasattr(city, "heightMapEntry"):
                 self.height[
                     city.yPos : city.yPos + city.ySize,
                     city.xPos : city.xPos + city.xSize,
-                ] = Numeric.reshape(
-                    (Numeric.frombuffer(city.heightMapEntry.content[2:], Numeric.float32) * Numeric.array(10, Numeric.float32)).astype(
-                        Numeric.uint16
-                    ),
+                ] = np.reshape(
+                    (np.frombuffer(city.heightMapEntry.content[2:], np.float32) * np.array(10, np.float32)).astype(np.uint16),
                     (city.ySize, city.xSize),
                 )
                 del city.heightMapEntry
@@ -982,7 +972,7 @@ class SC4Region:
                 self.height[
                     city.yPos : city.yPos + city.ySize,
                     city.xPos : city.xPos + city.xSize,
-                ] = Numeric.ones((city.ySize, city.xSize), Numeric.uint16) * Numeric.array(self.waterLevel - 50).astype(Numeric.uint16)
+                ] = np.ones((city.ySize, city.xSize), np.uint16) * np.array(self.waterLevel - 50).astype(np.uint16)
             city.height = None
         dlg.Update(2, "Please wait while loading the region\nBuilding textures")
         logger.info("region read")

@@ -3,7 +3,7 @@ import zlib
 
 import pytest
 
-from sc4_mapper.zipUtils import ZipInputStream
+from sc4_mapper.core.zipUtils import ZipInputStream
 
 
 def test_zip_input_stream_read():

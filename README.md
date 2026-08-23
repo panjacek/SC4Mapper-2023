@@ -1,63 +1,83 @@
-SC4Mapper-2023
-==============
+# SC4Mapper-2013 (remix)
 
-This is a remix of the original [SC4Mapper-2013](https://github.com/wouanagaine/SC4Mapper-2013).
+Remix of the original [SC4Mapper-2013](https://github.com/wouanagaine/SC4Mapper-2013).
 
-The goals of this fork are:
-- **Dockerization**: Run SC4Mapper in a consistent, containerized environment.
-- **Python 3 Compatibility**: Port the original Python 2 codebase to modern Python 3.11+.
+SimCity 4 region import/export tool. Goals of this fork:
 
-SC4 Region import/export tool.
+- **Python 3.11+** port of the original Python 2 codebase
+- **Dockerized**: consistent, containerized environment for GUI + CI
+- **Fast local test loop** via [uv](https://docs.astral.sh/uv/) (no docker, no wx)
+
+[![CI](https://github.com/panjacek/SC4Mapper-2023/actions/workflows/ci.yml/badge.svg)](https://github.com/panjacek/SC4Mapper-2023/actions/workflows/ci.yml)
+
+## Quick start
+
 ```bash
-make build
-docker compose up
+make build          # build sc4mapper:latest image
+docker compose up   # run the app
 ```
 
-Requirements
-============
-- Python 3.11+
-- [Numpy](https://numpy.org/) 2.4.1
-- [Pillow](https://python-pillow.org/) 12.1.0
-- [wxPython](https://www.wxpython.org/) 4.2.0 (from Debian bookworm)
+Run `make help` for all targets. `make sync` upgrades dependencies, re-locks
+and refreshes the venv.
 
-Development
-===========
+## Development
 
-Developing with Docker is the recommended approach.
+### Fast local loop (uv)
 
-### Build and Run
+Runs `core/` tests only — no docker, no wx needed. UI tests auto-skip.
+
 ```bash
-# This section is now redundant as the build/run instructions are at the top.
-# make build
-# docker compose up
+make lint-local    # ruff check via uv
+make test-local    # uv venv + pytest (~5s; rebuilds QFS/tools3D against venv python)
 ```
 
-### Testing and Quality Control
+Requires `uv` and `gcc`.
+
+### Full loop (Docker)
+
 ```bash
-# Rebuild test environment
-make build-test
-
-# Run linting (Ruff)
-make lint
-
-# Run all tests
-make test
-
-# Format code
-make format
+make build         # slim runtime image (sc4mapper:latest, multi-stage)
+make build-test    # test image on top (implies make build)
+make lint          # ruff check
+make format        # ruff format + clang-format C sources
+make format-check  # CI gate: format check only
+make test          # all tests incl. UI, inside Docker
 ```
 
 > [!NOTE]
-> Running tests requires existing SC4 sample regions and/or `.SC4M` files in the `region_tests/` directory (e.g., `San Francisco`, `Jakarta.SC4M`).
+> Region tests require fixture data in `region_tests/` (untracked):
+> e.g. `San Francisco/`, `Jakarta.SC4M`. Without it those cases skip silently.
 
-### Manual Usage (Legacy)
-```bash
-# clean stdout from gtk errors via
-SC4App 2>&1 | grep -v "Gtk-WARNING\|dconf-WARNING\|^$"
+## Structure
+
+```
+sc4_mapper/
+├── SC4MapApp.py     # entry: python3 -m sc4_mapper.SC4MapApp (or `sc4mapper`)
+├── splash_screen.py
+├── core/            # format lib + utilities — no wx imports
+│   ├── rgnReader.py       # DBPF/SC4 region read/write
+│   └── zipUtils.py, utils.py, helpers.py, gradient_reader.py
+└── ui/              # all wxPython code
+    ├── overview.py        # main window
+    ├── canvas.py          # rendering
+    ├── region_handler.py  # save/export orchestration
+    ├── region_from_file.py# .SC4M / image import handlers
+    └── about.py, QuestionDialog.py
 ```
 
-Contributors
-============
+C extensions live in `Modules/` (`QFS.so` compression, `tools3D.so`) —
+built by `make modules`, loaded at runtime.
+
+## Requirements
+
+- Runtime (GUI): Python 3.11+, numpy, Pillow, wxPython — all provided by the Docker image
+- Local testing: [uv](https://docs.astral.sh/uv/), gcc
+
+## Legacy bare-metal usage notes and packaging scripts were removed from the repo
+(still reachable in git history).
+
+## Contributors
+
 - Wouanagaine
 - JoeST
 - panjacek

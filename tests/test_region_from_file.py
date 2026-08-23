@@ -2,17 +2,20 @@ import os
 import struct
 import tempfile
 import zlib
+from unittest.mock import MagicMock
 
-import numpy as Numeric
+import numpy as np
 import pytest
 from PIL import Image
 
-from sc4_mapper.region_from_file import (
+from sc4_mapper.ui.region_from_file import (
     SC4MfileHandler,
     SC4MfileHandlerGrey,
     SC4MfileHandlerPNG,
     SC4MfileHandlerRGB,
 )
+
+pytestmark = pytest.mark.ui
 
 
 def test_sc4m_file_handler():
@@ -40,7 +43,7 @@ def test_sc4m_file_handler():
         r, config = handler.read()
 
         assert r.shape == (x_size * y_size,)
-        assert Numeric.all(r == 1)
+        assert np.all(r == 1)
         assert config is None  # Since we didn't provide SC4C
     finally:
         os.unlink(tmp_path)
@@ -77,17 +80,11 @@ def test_sc4m_file_handler_with_notes_and_config():
         tmp_path = tmp.name
 
     try:
-        # Mocking wx to avoid showing dialog during tests
-        from unittest.mock import MagicMock
-
-        import wx
-
-        # We need to mock wx.App and wx.Dialog.ShowModal
-        wx.App()
+        # Mock dialogs so read() never shows UI; wx.App comes from conftest.
         with pytest.MonkeyPatch().context() as m:
             m.setattr("wx.adv.AboutDialogInfo", MagicMock())
             # SC4MfileHandler uses about.AuthorBox
-            m.setattr("sc4_mapper.about.AuthorBox", MagicMock())
+            m.setattr("sc4_mapper.ui.about.AuthorBox", MagicMock())
 
             handler = SC4MfileHandler(tmp_path)
             r, config = handler.read()
@@ -109,7 +106,7 @@ def test_grey_handler():
         handler = SC4MfileHandlerGrey(tmp_path)
         data = handler.read()
         assert data.shape == (100,)
-        assert Numeric.all(data == 100)
+        assert np.all(data == 100)
     finally:
         os.unlink(tmp_path)
 
@@ -125,7 +122,7 @@ def test_png_handler():
         handler = SC4MfileHandlerPNG(tmp_path)
         data = handler.read()
         assert data.shape == (100,)
-        assert Numeric.all(data == 1000)
+        assert np.all(data == 1000)
     finally:
         os.unlink(tmp_path)
 
@@ -142,6 +139,6 @@ def test_rgb_handler():
         data = handler.read()
         assert data.shape == (100,)
         # (1 << 12) | (1 << 8) | 0 = 0x1100 = 4352
-        assert Numeric.all(data == 4352)
+        assert np.all(data == 4352)
     finally:
         os.unlink(tmp_path)

@@ -147,7 +147,7 @@ unsigned char *OnePassColors(bool bLight, int xSize, int ySize,
       unsigned char c = 0xFF;
       l = Dot(norm, lightDir);
       if (l < 0) {
-        v = (l)*64.f;
+        v = (l) * 64.f;
         c = 191 - (int)v;
       }
       if (n < 20) {

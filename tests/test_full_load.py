@@ -3,20 +3,23 @@ import os
 
 import pytest
 
-from sc4_mapper.rgnReader import SC4Region
+from sc4_mapper.core.rgnReader import SC4Region
 
 logger = logging.getLogger(__name__)
-logging.getLogger("sc4_mapper.rgnReader").setLevel(logging.INFO)
+logging.getLogger("sc4_mapper.core.rgnReader").setLevel(logging.INFO)
+
+# Repo-root relative so tests run regardless of cwd
+REGION_TESTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "region_tests")
 
 
 @pytest.fixture(scope="session")
-def test_regions_dir(request):
-    return os.path.join(request.config.rootdir, "region_tests")
+def test_regions_dir():
+    return REGION_TESTS_DIR
 
 
 def get_region_folders():
     # Helper to find all subdirectories in region_tests that look like valid regions (have config.bmp)
-    root = os.path.join(os.getcwd(), "region_tests")
+    root = REGION_TESTS_DIR
     if not os.path.exists(root):
         return []
     valid_regions = []
@@ -26,6 +29,12 @@ def get_region_folders():
     if os.path.isdir(path) and os.path.exists(os.path.join(path, "config.bmp")):
         valid_regions.append(target)
     return valid_regions
+
+
+def test_region_fixtures_available():
+    """Visible skip when fixtures are absent - empty parametrize would pass silently."""
+    if not os.path.isdir(REGION_TESTS_DIR) or not get_region_folders():
+        pytest.skip(f"no region fixtures under {REGION_TESTS_DIR}")
 
 
 @pytest.mark.parametrize("region_name", get_region_folders())

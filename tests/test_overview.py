@@ -1,21 +1,15 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-import wx
 
 from sc4_mapper import EDITMODE_NONE, EDITMODE_SMALL
-from sc4_mapper.overview import OverView
+from sc4_mapper.ui.overview import OverView
+
+pytestmark = pytest.mark.ui
 
 
-@pytest.fixture
-def wx_app():
-    app = wx.App()
-    yield app
-    app.Destroy()
-
-
-@patch("sc4_mapper.overview.OverViewCanvas")
-@patch("sc4_mapper.overview.RegionHandler")
+@patch("sc4_mapper.ui.overview.OverViewCanvas")
+@patch("sc4_mapper.ui.overview.RegionHandler")
 def test_overview_init(mock_handler, mock_canvas, wx_app):
     frame = OverView(None, "Test Title", (800, 600))
 
@@ -30,8 +24,8 @@ def test_overview_init(mock_handler, mock_canvas, wx_app):
     frame.Destroy()
 
 
-@patch("sc4_mapper.overview.OverViewCanvas")
-@patch("sc4_mapper.overview.RegionHandler")
+@patch("sc4_mapper.ui.overview.OverViewCanvas")
+@patch("sc4_mapper.ui.overview.RegionHandler")
 def test_overview_toggle_edit_mode(mock_handler, mock_canvas, wx_app):
     frame = OverView(None, "Test", (800, 600))
 
@@ -54,8 +48,8 @@ def test_overview_toggle_edit_mode(mock_handler, mock_canvas, wx_app):
     frame.Destroy()
 
 
-@patch("sc4_mapper.overview.OverViewCanvas")
-@patch("sc4_mapper.overview.RegionHandler")
+@patch("sc4_mapper.ui.overview.OverViewCanvas")
+@patch("sc4_mapper.ui.overview.RegionHandler")
 def test_overview_set_edit_mode(mock_handler, mock_canvas, wx_app):
     frame = OverView(None, "Test", (800, 600))
 
@@ -72,8 +66,8 @@ def test_overview_set_edit_mode(mock_handler, mock_canvas, wx_app):
     frame.Destroy()
 
 
-@patch("sc4_mapper.overview.OverViewCanvas")
-@patch("sc4_mapper.overview.RegionHandler")
+@patch("sc4_mapper.ui.overview.OverViewCanvas")
+@patch("sc4_mapper.ui.overview.RegionHandler")
 def test_overview_zoom(mock_handler, mock_canvas, wx_app):
     frame = OverView(None, "Test", (800, 600))
     frame.region = MagicMock()

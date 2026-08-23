@@ -1,6 +1,6 @@
 import pytest
 
-from sc4_mapper import utils
+from sc4_mapper.core import utils
 
 
 @pytest.mark.parametrize("fancy_name", ["plain", "óóóćź", "ŁŁŁó", "что-нибудь"])
