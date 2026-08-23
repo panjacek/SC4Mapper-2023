@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  # root dev env (pytest, ruff, numpy, pillow; wxpython via apt, not locked)
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      uv-root:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "fix(deps)"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci(deps)"
