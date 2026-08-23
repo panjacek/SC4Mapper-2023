@@ -5,7 +5,7 @@ import wx
 import wx.adv
 
 from sc4_mapper import MAPPER_VERSION, base_dir
-from sc4_mapper.overview import OverView
+from sc4_mapper.ui.overview import OverView
 
 logger = logging.getLogger(__name__)
 

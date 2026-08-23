@@ -1,3 +1,41 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SC4Mapper-2013"
+version = "2.0.0"
+description = "SC4 Region import/export tool"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pillow",
+    "wxPython",
+]
+
+[project.scripts]
+sc4mapper = "sc4_mapper.SC4MapApp:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-cov>=7",
+    "pytest-mock>=3.15",
+    "ruff>=0.14",
+]
+
+[tool.setuptools]
+zip-safe = false
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["sc4_mapper*"]
+
+[tool.setuptools.package-data]
+# Data only — C extensions are NOT packaged here: they are supplied by the
+# separate QFS/tools3D installs (make install) or built into docker images.
+sc4_mapper = ["static/*"]
+
 [tool.ruff]
 line-length = 150
 target-version = "py311"
@@ -26,6 +64,9 @@ source = ["sc4_mapper"]
 [tool.pytest.ini_options]
 addopts = "--cov=sc4_mapper --cov-report term-missing"
 log_cli = true
-log_cli_level = "DEBUG"
+log_cli_level = "WARNING"
 log_cli_format = "%(asctime)s [%(levelname)s][%(filename)s:%(lineno)s]%(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+markers = [
+    "ui: tests that need a real wx display (deselect with -m 'not ui')",
+]

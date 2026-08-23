@@ -12,10 +12,10 @@ from sc4_mapper import (
     EDITMODE_SMALL,
     EDITMODE_VOID,
     SCROLL_RATE,
-    rgnReader,
 )
-from sc4_mapper.canvas import OverViewCanvas
-from sc4_mapper.region_handler import RegionHandler
+from sc4_mapper.core import rgnReader
+from sc4_mapper.ui.canvas import OverViewCanvas
+from sc4_mapper.ui.region_handler import RegionHandler
 
 logger = logging.getLogger(__name__)
 

@@ -7,3 +7,11 @@ dist/
 *.pyd
 *.exe
 *.zip
+*.so
+.coverage
+.pytest_cache/
+.ruff_cache/
+region_tests/
+*.egg-info/
+.venv/
+docs/plans/

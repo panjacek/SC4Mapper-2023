@@ -1,17 +1,12 @@
 from unittest.mock import MagicMock, patch
 
-import numpy as Numeric
+import numpy as np
 import pytest
 import wx
 
-from sc4_mapper.region_handler import RegionHandler
+from sc4_mapper.ui.region_handler import RegionHandler
 
-
-@pytest.fixture
-def wx_app():
-    app = wx.App()
-    yield app
-    app.Destroy()
+pytestmark = pytest.mark.ui
 
 
 def test_region_handler_init():
@@ -48,9 +43,9 @@ def test_create_rgn_ok():
     mock_frame.btnZoomOut.Enable.assert_called_with(True)
 
 
-@patch("sc4_mapper.region_handler.wx.DirDialog")
-@patch("sc4_mapper.region_handler.wx.ProgressDialog")
-@patch("sc4_mapper.region_handler.rgnReader.SC4Region")
+@patch("sc4_mapper.ui.region_handler.wx.DirDialog")
+@patch("sc4_mapper.ui.region_handler.wx.ProgressDialog")
+@patch("sc4_mapper.ui.region_handler.rgnReader.SC4Region")
 def test_load_a_region_success(mock_sc4_region, mock_prog_dlg, mock_dir_dlg, wx_app, mocker):
     mock_frame = MagicMock()
     handler = RegionHandler(mock_frame)
@@ -74,7 +69,7 @@ def test_load_a_region_success(mock_sc4_region, mock_prog_dlg, mock_dir_dlg, wx_
     mock_prog_dlg.return_value.Update.assert_called_with(0)
 
 
-@patch("sc4_mapper.region_handler.wx.DirDialog")
+@patch("sc4_mapper.ui.region_handler.wx.DirDialog")
 def test_load_a_region_cancel(mock_dir_dlg, wx_app):
     mock_frame = MagicMock()
     handler = RegionHandler(mock_frame)
@@ -88,9 +83,9 @@ def test_load_a_region_cancel(mock_dir_dlg, wx_app):
     mock_dir_inst.Destroy.assert_called_once()
 
 
-@patch("sc4_mapper.region_handler.wx.FileDialog")
-@patch("sc4_mapper.region_handler.wx.ProgressDialog")
-@patch("sc4_mapper.region_handler.zlib.compressobj")
+@patch("sc4_mapper.ui.region_handler.wx.FileDialog")
+@patch("sc4_mapper.ui.region_handler.wx.ProgressDialog")
+@patch("sc4_mapper.ui.region_handler.zlib.compressobj")
 @patch("builtins.open", new_callable=MagicMock)
 def test_export_as_sc4m_success(mock_open, mock_zlib, mock_prog_dlg, mock_file_dlg, wx_app):
     mock_frame = MagicMock()
@@ -110,7 +105,7 @@ def test_export_as_sc4m_success(mock_open, mock_zlib, mock_prog_dlg, mock_file_d
 
     mock_frame.region.all_cities = [mock_city]
     mock_frame.region.waterLevel = 250
-    mock_frame.region.height = Numeric.zeros((100, 100), Numeric.uint16)
+    mock_frame.region.height = np.zeros((100, 100), np.uint16)
 
     mock_config = MagicMock()
     mock_config.size = (4, 4)
@@ -127,8 +122,8 @@ def test_export_as_sc4m_success(mock_open, mock_zlib, mock_prog_dlg, mock_file_d
     mock_config.save.assert_called()
 
 
-@patch("sc4_mapper.region_handler.wx.ProgressDialog")
-@patch("sc4_mapper.region_handler.Image")
+@patch("sc4_mapper.ui.region_handler.wx.ProgressDialog")
+@patch("sc4_mapper.ui.region_handler.Image")
 def test_export_as_rgb_success(mock_image, mock_prog_dlg, wx_app):
     mock_img_new = mock_image.new
     mock_frame = MagicMock()
@@ -143,7 +138,7 @@ def test_export_as_rgb_success(mock_image, mock_prog_dlg, wx_app):
     mock_city.city_y_size = 1
 
     mock_frame.region.all_cities = [mock_city]
-    mock_frame.region.height = Numeric.zeros((100, 100), Numeric.uint16)
+    mock_frame.region.height = np.zeros((100, 100), np.uint16)
 
     mock_config = MagicMock()
     mock_config.size = (4, 4)
@@ -155,8 +150,8 @@ def test_export_as_rgb_success(mock_image, mock_prog_dlg, wx_app):
     mock_config.save.assert_called()
 
 
-@patch("sc4_mapper.region_handler.wx.ProgressDialog")
-@patch("sc4_mapper.region_handler.Image")
+@patch("sc4_mapper.ui.region_handler.wx.ProgressDialog")
+@patch("sc4_mapper.ui.region_handler.Image")
 def test_export_as_png_success(mock_image, mock_prog_dlg, wx_app):
     mock_img_new = mock_image.new
     mock_frame = MagicMock()
@@ -171,7 +166,7 @@ def test_export_as_png_success(mock_image, mock_prog_dlg, wx_app):
     mock_city.city_y_size = 1
 
     mock_frame.region.all_cities = [mock_city]
-    mock_frame.region.height = Numeric.zeros((100, 100), Numeric.uint16)
+    mock_frame.region.height = np.zeros((100, 100), np.uint16)
 
     mock_config = MagicMock()
     mock_config.size = (4, 4)
@@ -181,3 +176,46 @@ def test_export_as_png_success(mock_image, mock_prog_dlg, wx_app):
     mock_img_new.assert_called()
     mock_prog_dlg.return_value.Update.assert_called()
     mock_config.save.assert_called()
+
+
+@patch("sc4_mapper.ui.region_handler.wx.FileDialog")
+@patch("sc4_mapper.ui.region_handler.wx.ProgressDialog")
+def test_export_as_sc4m_roundtrip(mock_prog_dlg, mock_file_dlg, wx_app, tmp_path):
+    """Regression: SC4M export must be readable by our own importer.
+
+    Writer used struct.pack("L") which is 8 bytes on 64-bit Linux while the
+    reader expects 4-byte fields — exports were misaligned garbage.
+    """
+    from PIL import Image
+
+    from sc4_mapper.ui.region_from_file import SC4MfileHandler
+
+    # Cancel author-notes dialog -> no SC4N section
+    mock_file_inst = mock_file_dlg.return_value
+    mock_file_inst.ShowModal.return_value = wx.ID_CANCEL
+
+    mock_frame = MagicMock()
+    handler = RegionHandler(mock_frame)
+
+    mock_city = MagicMock()
+    mock_city.city_x_position = 0
+    mock_city.city_y_position = 0
+    mock_city.city_x_size = 1
+    mock_city.city_y_size = 1
+
+    mock_frame.region.all_cities = [mock_city]
+    mock_frame.region.waterLevel = 250
+    mock_frame.region.height = np.zeros((100, 100), np.uint16)
+
+    config = Image.new("RGB", (4, 4))
+
+    out = tmp_path / "out.sc4m"
+    handler.ExportAsSC4M(str(out), config, 0, 0, [0, 0, 4, 4])
+
+    assert out.exists()
+
+    r, parsed_config = SC4MfileHandler(str(out)).read()
+
+    assert parsed_config is not None
+    assert r.shape[0] == (4 * 64 + 1) * (4 * 64 + 1)
+    assert (r == 0).all(), "zero-height region must roundtrip as zeros"

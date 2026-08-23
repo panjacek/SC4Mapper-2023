@@ -3,19 +3,16 @@ import os
 import struct
 import zlib
 
-import numpy as Numeric
+import numpy as np
 import tools3D
 import wx
 from PIL import Image, ImageDraw
 
-from sc4_mapper import (
-    MAPPER_VERSION,
-    QuestionDialog,
-    base_dir,
-    rgnReader,
-)
-from sc4_mapper.helpers import cached_listdir
-from sc4_mapper.region_from_file import (
+from sc4_mapper import MAPPER_VERSION, base_dir
+from sc4_mapper.core import rgnReader
+from sc4_mapper.core.helpers import cached_listdir
+from sc4_mapper.ui import QuestionDialog
+from sc4_mapper.ui.region_from_file import (
     CreateRgnFromFile,
     SC4MfileHandler,
     SC4MfileHandlerGrey,
@@ -69,17 +66,17 @@ class RegionHandler:
                 x2 = x1 + width
                 y2 = y1 + height
 
-                h = Numeric.zeros((height, width), Numeric.uint16)
-                h[:, :] = Numeric.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
-                h = h.astype(Numeric.float32)
-                h /= Numeric.array(10).astype(Numeric.float32)
+                h = np.zeros((height, width), np.uint16)
+                h[:, :] = np.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
+                h = h.astype(np.float32)
+                h /= np.array(10).astype(np.float32)
                 rawRGB = tools3D.onePassColors(
                     False,
                     (height, width),
                     self.frame.region.waterLevel,
                     h,
-                    rgnReader.GRADIENT_READER.paletteWater,
-                    rgnReader.GRADIENT_READER.paletteLand,
+                    rgnReader.get_gradient_reader().paletteWater,
+                    rgnReader.get_gradient_reader().paletteLand,
                     lightDir,
                 )
                 del h
@@ -96,17 +93,17 @@ class RegionHandler:
                     y1 = y
                     x2 = x1 + width
                     y2 = y1 + height
-                    h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
-                    h = h.astype(Numeric.float32)
-                    h /= Numeric.array(10).astype(Numeric.float32)
+                    h = np.zeros((height, width), np.uint16)
+                    h[:, :] = np.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
+                    h = h.astype(np.float32)
+                    h /= np.array(10).astype(np.float32)
                     rawRGB = tools3D.onePassColors(
                         False,
                         (height, width),
                         self.frame.region.waterLevel,
                         h,
-                        rgnReader.GRADIENT_READER.paletteWater,
-                        rgnReader.GRADIENT_READER.paletteLand,
+                        rgnReader.get_gradient_reader().paletteWater,
+                        rgnReader.get_gradient_reader().paletteLand,
                         lightDir,
                     )
                     del h
@@ -214,17 +211,17 @@ class RegionHandler:
                     height = y2 - y1
                     if width <= 0 or height <= 0:
                         continue
-                    h = Numeric.zeros((height, width), Numeric.uint16)
-                    h[:, :] = Numeric.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
-                    h = h.astype(Numeric.float32)
-                    h /= Numeric.array(10).astype(Numeric.float32)
+                    h = np.zeros((height, width), np.uint16)
+                    h[:, :] = np.reshape(self.frame.region.height[y1:y2, x1:x2], (height, width))
+                    h = h.astype(np.float32)
+                    h /= np.array(10).astype(np.float32)
                     rawRGB = tools3D.onePassColors(
                         False,
                         (height, width),
                         self.frame.region.waterLevel,
                         h,
-                        rgnReader.GRADIENT_READER.paletteWater,
-                        rgnReader.GRADIENT_READER.paletteLand,
+                        rgnReader.get_gradient_reader().paletteWater,
+                        rgnReader.get_gradient_reader().paletteLand,
                         lightDir,
                     )
                     imCity = Image.frombytes("RGB", (width, height), rawRGB).convert("L").convert("RGB")
@@ -422,19 +419,19 @@ class RegionHandler:
                 city.city_x_size,
                 city.city_y_size,
             )
-            heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
+            heightMap = np.zeros((citySave.ySize, citySave.xSize), np.uint16)
             heightMap[::, ::] = self.frame.region.height[
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            red = ((heightMap / Numeric.array(4096, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)) * Numeric.array(16, Numeric.uint16)
-            red = red.astype(Numeric.uint8)
+            red = ((heightMap / np.array(4096, np.uint16)) % np.array(16, np.uint16)) * np.array(16, np.uint16)
+            red = red.astype(np.uint8)
             imRed = Image.frombytes("L", (heightMap.shape[1], heightMap.shape[0]), red.tobytes())
-            green = ((heightMap / Numeric.array(256, Numeric.uint16)) % Numeric.array(16, Numeric.uint16)) * Numeric.array(16, Numeric.uint16)
-            green = green.astype(Numeric.uint8)
+            green = ((heightMap / np.array(256, np.uint16)) % np.array(16, np.uint16)) * np.array(16, np.uint16)
+            green = green.astype(np.uint8)
             imGreen = Image.frombytes("L", (heightMap.shape[1], heightMap.shape[0]), green.tobytes())
-            blue = heightMap % Numeric.array(256, Numeric.uint16)
-            blue = blue.astype(Numeric.uint8)
+            blue = heightMap % np.array(256, np.uint16)
+            blue = blue.astype(np.uint8)
             imBlue = Image.frombytes("L", (heightMap.shape[1], heightMap.shape[0]), blue.tobytes())
             imCity = Image.merge("RGB", (imRed, imGreen, imBlue))
             im.paste(imCity, (citySave.xPos, citySave.yPos))
@@ -494,12 +491,12 @@ class RegionHandler:
                 city.city_x_size,
                 city.city_y_size,
             )
-            heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
+            heightMap = np.zeros((citySave.ySize, citySave.xSize), np.uint16)
             heightMap[::, ::] = self.frame.region.height[
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            heightMap = heightMap.astype(Numeric.int32)
+            heightMap = heightMap.astype(np.int32)
             imCity = Image.frombytes("I", (heightMap.shape[1], heightMap.shape[0]), heightMap.tobytes())
             im.paste(imCity, (citySave.xPos, citySave.yPos))
         dlgProg.Close()
@@ -584,12 +581,12 @@ class RegionHandler:
                 city.city_x_size,
                 city.city_y_size,
             )
-            heightMap = Numeric.zeros((citySave.ySize, citySave.xSize), Numeric.uint16)
+            heightMap = np.zeros((citySave.ySize, citySave.xSize), np.uint16)
             heightMap[::, ::] = self.frame.region.height[
                 citySave.yPos + subRgn[1] : citySave.yPos + subRgn[1] + citySave.ySize,
                 citySave.xPos + subRgn[0] : citySave.xPos + subRgn[0] + citySave.xSize,
             ]
-            heightMap = heightMap.astype(Numeric.int32)
+            heightMap = heightMap.astype(np.int32)
             imCity = Image.frombytes("RGBA", (heightMap.shape[1], heightMap.shape[0]), heightMap.tobytes())
             imCity1, imCity2 = imCity.split()[:2]
             im1.paste(imCity1, (citySave.xPos, citySave.yPos))
@@ -600,21 +597,21 @@ class RegionHandler:
         wx.Yield()
 
         s = b"SC4M"
-        s += struct.pack("L", 0x0200)
-        s += struct.pack("L", im1.size[1])
-        s += struct.pack("L", im1.size[0])
+        s += struct.pack("<I", 0x0200)
+        s += struct.pack("<I", im1.size[1])
+        s += struct.pack("<I", im1.size[0])
         s += struct.pack("f", 0)
         if htmlFileName is not None and os.path.isfile(htmlFileName):
             s += b"SC4N"  # author notes
             with open(htmlFileName, "rb") as filehtml:
                 line = filehtml.read()
-            s += struct.pack("L", len(line))
+            s += struct.pack("<I", len(line))
             s += line
         s += b"SC4C"  # config.bmp included
-        s += struct.pack("L", config.size[0])
-        s += struct.pack("L", config.size[1])
+        s += struct.pack("<I", config.size[0])
+        s += struct.pack("<I", config.size[1])
         configStr = config.tobytes()
-        s += struct.pack("L", len(configStr))
+        s += struct.pack("<I", len(configStr))
         s += configStr
         s += b"SC4D"  # elevation data
         try:

@@ -15,4 +15,3 @@ services:
       - ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro
       - .:/app
     network_mode: host
-    command: python3 -m sc4_mapper.SC4MapApp

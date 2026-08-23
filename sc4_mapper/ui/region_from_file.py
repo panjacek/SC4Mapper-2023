@@ -1,14 +1,16 @@
 import logging
 import struct
 
-import numpy as Numeric
+import numpy as np
 import wx
 import wx.adv
 import wx.lib.masked as masked
 from PIL import Image
 
-from sc4_mapper import about, base_dir, rgnReader, zipUtils
-from sc4_mapper.rgnReader import SC4Region
+from sc4_mapper import base_dir
+from sc4_mapper.core import rgnReader, zipUtils
+from sc4_mapper.core.rgnReader import SC4Region
+from sc4_mapper.ui import about
 
 logger = logging.getLogger(__name__)
 
@@ -69,21 +71,19 @@ class SC4MfileHandler:
                 logger.debug(f"configSize={configSize} lenstring={lenstring}")
                 # FIXME: need to read hot to switch fromstring to new way, TEST
                 imString = zipped.read(lenstring)
-                # config = Image.fromarray(Numeric.array(imString), "RGB")
-                with Image.frombytes("RGB", configSize, Numeric.array(imString)) as _im_config:
+                with Image.frombytes("RGB", configSize, np.array(imString)) as _im_config:
                     config = _im_config.copy()
-                # config = Image.fromstring("RGB", configSize, imString)
                 temp = zipped.read(4).decode()
                 logger.info(f"config: {temp}")
             if temp != "SC4D":
                 logger.warning(temp)
                 raise OSError("SC4D")
-            r = Numeric.frombuffer(zipped.read(xSize * ySize), Numeric.uint8)
-            rH = Numeric.frombuffer(zipped.read(xSize * ySize), Numeric.uint8)
+            r = np.frombuffer(zipped.read(xSize * ySize), np.uint8)
+            rH = np.frombuffer(zipped.read(xSize * ySize), np.uint8)
             zipped = None
-        r = r.astype(Numeric.uint16)
-        rH = rH.astype(Numeric.uint16)
-        rH *= Numeric.array(256).astype(Numeric.uint16)
+        r = r.astype(np.uint16)
+        rH = rH.astype(np.uint16)
+        rH *= np.array(256).astype(np.uint16)
         r += rH
         del rH
 
@@ -98,7 +98,7 @@ class SC4MfileHandlerGrey:
         with Image.open(self.file_name) as im:
             if im.mode != "L":
                 im = im.convert("L")
-            data = Numeric.array(im, dtype=Numeric.uint16)
+            data = np.array(im, dtype=np.uint16)
             return data.flatten()
 
 
@@ -112,7 +112,7 @@ class SC4MfileHandlerPNG:
             if im.mode not in ("I;16", "I"):
                 logger.warning(f"Unexpected PNG mode {im.mode}, converting to 16-bit")
                 im = im.convert("I")
-            data = Numeric.array(im, dtype=Numeric.uint16)
+            data = np.array(im, dtype=np.uint16)
             return data.flatten()
 
 
@@ -124,12 +124,12 @@ class SC4MfileHandlerRGB:
         with Image.open(self.file_name) as im:
             if im.mode != "RGB":
                 im = im.convert("RGB")
-            data = Numeric.array(im, dtype=Numeric.uint16)
+            data = np.array(im, dtype=np.uint16)
             # Encoding: H = ((Red >> 4) << 12) | ((Green >> 4) << 8) | Blue
             red = data[:, :, 0]
             green = data[:, :, 1]
             blue = data[:, :, 2]
-            height = (((red >> 4) << 12) | ((green >> 4) << 8) | blue).astype(Numeric.uint16)
+            height = (((red >> 4) << 12) | ((green >> 4) << 8) | blue).astype(np.uint16)
             return height.flatten()
 
 
@@ -385,7 +385,7 @@ def CreateRgnFromFile(handler, frame):
 
     if r is not None and config is not None:
         if scale != 1.0:
-            r = (r.astype(Numeric.float32) * scale).astype(Numeric.uint16)
+            r = (r.astype(np.float32) * scale).astype(np.uint16)
 
         # Create the region
         region = SC4Region(None, 250, None, config=config)
@@ -399,9 +399,9 @@ def CreateRgnFromFile(handler, frame):
             if r.size != region.shape[0] * region.shape[1]:
                 logger.warning(f"Heightmap size {r.size} mismatch with region shape {region.shape}. Resizing.")
                 # This is a bit slow because we have to go back to Image
-                temp_im = Image.fromarray(r.reshape((-1, int(Numeric.sqrt(r.size)))) if Numeric.sqrt(r.size).is_integer() else r.reshape((1, -1)))
+                temp_im = Image.fromarray(r.reshape((-1, int(np.sqrt(r.size)))) if np.sqrt(r.size).is_integer() else r.reshape((1, -1)))
                 temp_im = temp_im.resize((region.imgSize[0], region.imgSize[1]), Image.Resampling.BILINEAR)
-                r = Numeric.array(temp_im, dtype=Numeric.uint16)
+                r = np.array(temp_im, dtype=np.uint16)
 
             region.height = r.reshape(region.shape)
         except Exception as e:

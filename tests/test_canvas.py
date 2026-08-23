@@ -1,17 +1,12 @@
 from unittest.mock import MagicMock, patch
 
-import numpy as Numeric
+import numpy as np
 import pytest
 import wx
 
-from sc4_mapper.canvas import OverViewCanvas
+from sc4_mapper.ui.canvas import OverViewCanvas
 
-
-@pytest.fixture
-def wx_app():
-    app = wx.App()
-    yield app
-    app.Destroy()
+pytestmark = pytest.mark.ui
 
 
 def test_canvas_init(wx_app):
@@ -26,15 +21,15 @@ def test_canvas_init(wx_app):
     canvas.Destroy()
 
 
-@patch("sc4_mapper.canvas.tools3D.onePassColors")
-@patch("sc4_mapper.canvas.wx.BufferedDC")
-@patch("sc4_mapper.canvas.wx.Bitmap")
-@patch("sc4_mapper.canvas.wx.Image")
+@patch("sc4_mapper.ui.canvas.tools3D.onePassColors")
+@patch("sc4_mapper.ui.canvas.wx.BufferedDC")
+@patch("sc4_mapper.ui.canvas.wx.Bitmap")
+@patch("sc4_mapper.ui.canvas.wx.Image")
 def test_canvas_update_drawing(mock_image, mock_bitmap, mock_dc, mock_one_pass, wx_app):
     mock_parent = wx.Frame(None)
     mock_parent.zoomLevel = 1
     mock_parent.region = MagicMock()
-    mock_parent.region.height = Numeric.zeros((200, 200), Numeric.uint16)
+    mock_parent.region.height = np.zeros((200, 200), np.uint16)
     mock_parent.region.waterLevel = 250
     mock_parent.region.imgSize = (200, 200)
     mock_parent.overlayCbx = MagicMock()

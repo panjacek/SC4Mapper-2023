@@ -1,0 +1,19 @@
+# Build context slimming — image gets sources only
+region_tests/
+.venv/
+.git/
+.github/
+docs/
+.coverage
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.pyd
+*.egg-info/
+.env
+Dockerfile
+Dockerfile.test
+docker-compose.yml

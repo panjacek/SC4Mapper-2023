@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from sc4_mapper.rgnReader import CitySize, SC4File, SC4Region
+from sc4_mapper.core.rgnReader import CitySize, SC4File, SC4Region
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class TestSC4File:
         assert sc4_file.indexRecordEntryCount == 116
 
     def test_read_entries(self, sc4_file_example_path, mocker):
-        sc4_entry_mock = mocker.patch("sc4_mapper.rgnReader.SC4Entry")
+        sc4_entry_mock = mocker.patch("sc4_mapper.core.rgnReader.SC4Entry")
         sc4_entry_mock().GetDWORD.return_value = 100
         sc4_file = SC4File(sc4_file_example_path)
         sc4_file.read_header()
@@ -92,7 +92,7 @@ class TestSC4File:
 
 
 def test_save_invalid_size(mocker):
-    from sc4_mapper.rgnReader import Save
+    from sc4_mapper.core.rgnReader import Save
 
     city = mocker.MagicMock()
     city.city_x_size = 99
@@ -104,7 +104,7 @@ class TestSC4Region:
     def test_init_region_with_config(self, mocker):
         # This uses valid logic but shouldn't need a real folder if paths are mocked or unused for listdir
         # SC4Region(..., config=...) calls parse_config and skips _init_config (which does listdir)
-        parse_mock = mocker.patch("sc4_mapper.rgnReader.parse_config")
+        parse_mock = mocker.patch("sc4_mapper.core.rgnReader.parse_config")
         config = mocker.MagicMock()
         region = SC4Region("/dummy/region/path", 200, None, config=config)
 
@@ -117,7 +117,7 @@ class TestSC4Region:
 
     def test_init_region_no_config(self, mocker):
         # Mocks _init_config, so no file access needed
-        init_mock = mocker.patch("sc4_mapper.rgnReader.SC4Region._init_config")
+        init_mock = mocker.patch("sc4_mapper.core.rgnReader.SC4Region._init_config")
         region = SC4Region("/dummy/region/path", 200, None, config=None)
 
         assert region.waterLevel == 200
