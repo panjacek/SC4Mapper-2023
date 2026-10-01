@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
       - name: Sync dev env
         run: uv sync --group dev --no-install-package wxpython
       - name: Ruff check
@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
       - name: Pytest core (builds QFS/tools3D against venv python)
         run: >-
           make test-local
